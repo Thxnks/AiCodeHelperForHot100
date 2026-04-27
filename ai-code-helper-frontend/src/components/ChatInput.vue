@@ -75,48 +75,52 @@ export default {
 
 <style scoped>
 .chat-input {
-  padding: 20px;
-  background-color: white;
-  border-top: 1px solid #e1e5e9;
+  padding: 16px;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
 }
 
 .input-container {
   display: flex;
   align-items: flex-end;
   gap: 12px;
-  max-width: 800px;
+  max-width: 980px;
   margin: 0 auto;
 }
 
 .input-textarea {
   flex: 1;
   padding: 12px 16px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(148, 163, 184, 0.45);
   border-radius: 24px;
   font-size: 14px;
   line-height: 1.4;
   resize: none;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
   min-height: 44px;
   max-height: 120px;
   overflow-y: auto;
+  background: rgba(15, 23, 42, 0.88);
+  background: #f8fafc;
+  color: #0f172a;
 }
 
 .input-textarea:focus {
-  border-color: #007bff;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
 }
 
 .input-textarea:disabled {
-  background-color: #f5f5f5;
-  color: #999;
+  background-color: #f1f5f9;
+  color: #94a3b8;
   cursor: not-allowed;
 }
 
 .send-button {
   width: 44px;
   height: 44px;
-  background-color: #007bff;
+  background: linear-gradient(130deg, #3b82f6, #22d3ee);
   border: none;
   border-radius: 50%;
   color: white;
@@ -129,11 +133,11 @@ export default {
 }
 
 .send-button:hover:not(:disabled) {
-  background-color: #0056b3;
+  filter: brightness(1.06);
 }
 
 .send-button:disabled {
-  background-color: #ccc;
+  background: #64748b;
   cursor: not-allowed;
 }
 

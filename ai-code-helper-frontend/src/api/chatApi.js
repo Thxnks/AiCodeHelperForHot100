@@ -1,78 +1,92 @@
-import axios from 'axios'
+import { apiClient, API_BASE_URL } from './httpClient'
 
-// 配置axios基础URL
-const API_BASE_URL = 'http://localhost:8081/api'
+export function chatWithSSE(
+  memoryId,
+  message,
+  roleId,
+  onMessage,
+  onError,
+  onClose,
+  currentProblemSlug = null,
+  solvingMode = 'guided'
+) {
+  const params = new URLSearchParams({
+    memoryId: String(memoryId),
+    message,
+    roleId,
+    solvingMode
+  })
+  if (currentProblemSlug && currentProblemSlug.trim() !== '') {
+    params.set('currentProblemSlug', currentProblemSlug.trim())
+  }
 
-/**
- * 使用 SSE 方式调用聊天接口
- * @param {number} memoryId 聊天室ID
- * @param {string} message 用户消息
- * @param {Function} onMessage 接收消息的回调函数
- * @param {Function} onError 错误处理回调函数
- * @param {Function} onClose 连接关闭回调函数
- * @returns {EventSource} 返回 EventSource 对象，用于手动关闭连接
- */
-export function chatWithSSE(memoryId, message, onMessage, onError, onClose) {
-    // 构建URL参数
-    const params = new URLSearchParams({
-        memoryId: memoryId,
-        message: message
-    })
-    
-    // 创建 EventSource 连接
-    const eventSource = new EventSource(`${API_BASE_URL}/ai/chat?${params}`)
-    
-    // 处理接收到的消息
-    eventSource.onmessage = function(event) {
-        try {
-            const data = event.data
-            if (data && data.trim() !== '') {
-                onMessage(data)
-            }
-        } catch (error) {
-            console.error('解析消息失败:', error)
-            onError && onError(error)
-        }
+  const eventSource = new EventSource(`${API_BASE_URL}/ai/chat?${params.toString()}`)
+  let hasReceivedMessage = false
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = event.data
+      if (data && data.trim() !== '') {
+        hasReceivedMessage = true
+        onMessage(data)
+      }
+    } catch (error) {
+      if (onError) onError(error)
     }
-    
-    // 处理错误
-    eventSource.onerror = function(error) {
-        console.log('SSE 连接状态:', eventSource.readyState)
-        // 只有在连接状态不是正常关闭时才报错
-        if (eventSource.readyState !== EventSource.CLOSED) {
-            console.error('SSE 连接错误:', error)
-            onError && onError(error)
-        } else {
-            console.log('SSE 连接正常结束')
-        }
-        
-        // 确保连接关闭
-        if (eventSource.readyState !== EventSource.CLOSED) {
-            eventSource.close()
-        }
+  }
+
+  eventSource.onerror = (error) => {
+    // SSE 在服务端正常关闭时通常也会触发 onerror。
+    // 若已经收到过内容，按“正常结束”处理，避免误报连接失败。
+    if (hasReceivedMessage) {
+      if (onClose) onClose()
+    } else if (onError) {
+      onError(error)
     }
-    
-    // 处理连接关闭
-    eventSource.onclose = function() {
-        console.log('SSE 连接已关闭')
-        onClose && onClose()
+
+    if (eventSource.readyState !== EventSource.CLOSED) {
+      eventSource.close()
     }
-    
-    return eventSource
+  }
+
+  return eventSource
 }
 
-/**
- * 检查后端服务是否可用
- * @returns {Promise<boolean>} 返回服务是否可用
- */
 export async function checkServiceHealth() {
-    try {
-        const response = await axios.get(`${API_BASE_URL}/health`, {
-            timeout: 5000
-        })
-        return response.status === 200
-    } catch (error) {
-        console.error('服务健康检查失败:', error)
-        return false
+  try {
+    const response = await apiClient.get('/health', { timeout: 5000 })
+    if (response.status !== 200) return false
+    const payload = response.data
+    if (payload && typeof payload === 'object' && 'code' in payload) {
+      return payload.code === 0
     }
-} 
+    return true
+  } catch (error) {
+    console.error('Health check failed:', error)
+    return false
+  }
+}
+
+export async function fetchRoles() {
+  const response = await apiClient.get('/roles', { timeout: 5000 })
+  const payload = response.data
+  const roleList = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload)
+      ? payload
+      : []
+  return roleList
+    .map((role) => ({
+      id: role.roleId,
+      name: role.name,
+      category: role.category || 'professional',
+      tagline: role.tagline || '',
+      description: role.description || '',
+      avatar: role.avatar || '/characters/sakurajima-mai.png',
+      avatarFallback: role.avatarFallback || role.avatar || '/characters/sakurajima-mai.png',
+      image: role.image || role.avatar || '/characters/sakurajima-mai.png',
+      imageFallback: role.imageFallback || role.avatarFallback || role.avatar || '/characters/sakurajima-mai.png',
+      sortOrder: Number.isFinite(role.sortOrder) ? role.sortOrder : 9999
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+}
