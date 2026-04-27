@@ -1,5 +1,7 @@
 # AI Code Helper For Hot100
 
+[中文文档](./README.zh-CN.md)
+
 A full-stack project built with `Spring Boot 3 + Vue 3 + LangChain4j`, focused on an AI coding assistant and Hot100 training workflow that is runnable and extensible.
 
 ## Core Features
@@ -117,15 +119,15 @@ Frontend variables are in `ai-code-helper-frontend/.env.example`:
 
 ```text
 .
-├── ai-code-helper-frontend/      # Frontend app
-├── src/main/java/                # Backend source code
-├── src/main/resources/
-│   ├── db/migration/             # Flyway SQL migrations
-│   ├── hot100/                   # Hot100 dataset files
-│   └── roles/                    # Role configs
-├── docker-compose.yml
-├── Dockerfile
-└── docs/                         # Design and delivery documents
+|-- ai-code-helper-frontend/      # Frontend app
+|-- src/main/java/                # Backend source code
+|-- src/main/resources/
+|   |-- db/migration/             # Flyway SQL migrations
+|   |-- hot100/                   # Hot100 dataset files
+|   `-- roles/                    # Role configs
+|-- docker-compose.yml
+|-- Dockerfile
+`-- docs/                         # Design and delivery documents
 ```
 
 ## Additional Docs
