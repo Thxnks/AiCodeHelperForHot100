@@ -1,5 +1,10 @@
 ### CUSTOM ###
 application-local.yml
+.env
+.env.local
+.env.*.local
+!.env.example
+data/
 
 HELP.md
 target/
@@ -34,3 +39,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Frontend local env ###
+ai-code-helper-frontend/.env
+ai-code-helper-frontend/.env.local
+ai-code-helper-frontend/.env.*.local
+!ai-code-helper-frontend/.env.example
