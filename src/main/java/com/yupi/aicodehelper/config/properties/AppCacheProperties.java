@@ -8,6 +8,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class AppCacheProperties {
 
     /**
+     * Whether Redis cache is enabled.
+     */
+    private boolean redisEnabled = true;
+
+    /**
      * Hot100 problem list/query cache ttl seconds.
      */
     private long hot100ProblemTtlSeconds = 300;

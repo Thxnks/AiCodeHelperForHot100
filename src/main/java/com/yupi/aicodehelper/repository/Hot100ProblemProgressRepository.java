@@ -13,4 +13,12 @@ public interface Hot100ProblemProgressRepository extends JpaRepository<Hot100Pro
     List<Hot100ProblemProgress> findAllByOrderByUpdatedAtDesc();
 
     List<Hot100ProblemProgress> findByStatusOrderByUpdatedAtDesc(String status);
+
+    Optional<Hot100ProblemProgress> findByUserIdAndProblemSlug(Long userId, String problemSlug);
+
+    List<Hot100ProblemProgress> findAllByUserIdOrderByUpdatedAtDesc(Long userId);
+
+    List<Hot100ProblemProgress> findByUserIdAndStatusOrderByUpdatedAtDesc(Long userId, String status);
+
+    List<Hot100ProblemProgress> findByUserId(Long userId);
 }

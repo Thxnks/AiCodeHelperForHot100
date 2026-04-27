@@ -13,6 +13,8 @@ public class Hot100Problem {
 
     private String slug;
 
+    private String leetCodeUrl;
+
     private String difficulty;
 
     private List<String> tags;

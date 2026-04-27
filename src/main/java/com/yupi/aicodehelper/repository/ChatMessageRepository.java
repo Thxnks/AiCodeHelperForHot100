@@ -8,4 +8,6 @@ import java.util.List;
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
     List<ChatMessage> findByMemoryIdOrderByCreatedAtAsc(Integer memoryId);
+
+    List<ChatMessage> findByMemoryIdAndUserIdOrderByCreatedAtAsc(Integer memoryId, Long userId);
 }

@@ -2,6 +2,7 @@
   "problemId": 200,
   "title": "岛屿数量",
   "slug": "number-of-islands",
+  "leetCodeUrl": "https://leetcode.cn/problems/number-of-islands/",
   "difficulty": "medium",
   "tags": ["matrix", "depth-first-search", "breadth-first-search", "union-find"],
   "pattern": "网格遍历 + DFS",

@@ -22,43 +22,45 @@ public class ChatPersistenceService {
     private ChatMessageRepository chatMessageRepository;
 
     @Transactional
-    public void recordUserMessage(Integer memoryId, String roleId, String message) {
-        upsertSession(memoryId, roleId, message);
-        saveMessage(memoryId, "user", roleId, message);
+    public void recordUserMessage(Integer memoryId, String roleId, String message, Long userId) {
+        upsertSession(memoryId, roleId, message, userId);
+        saveMessage(memoryId, "user", roleId, message, userId);
     }
 
     @Transactional
-    public void recordAiMessage(Integer memoryId, String roleId, String message) {
+    public void recordAiMessage(Integer memoryId, String roleId, String message, Long userId) {
         if (message == null || message.isBlank()) {
             return;
         }
-        upsertSession(memoryId, roleId, message);
-        saveMessage(memoryId, "assistant", roleId, message);
+        upsertSession(memoryId, roleId, message, userId);
+        saveMessage(memoryId, "assistant", roleId, message, userId);
     }
 
-    public List<ConversationSessionView> listSessions() {
-        return conversationSessionRepository.findAllByOrderByUpdatedAtDesc().stream()
+    public List<ConversationSessionView> listSessions(Long userId) {
+        return conversationSessionRepository.findAllByUserIdOrderByUpdatedAtDesc(userId).stream()
                 .map(ConversationSessionView::from)
                 .toList();
     }
 
-    public List<ChatMessageView> listMessages(Integer memoryId) {
+    public List<ChatMessageView> listMessages(Integer memoryId, Long userId) {
         if (memoryId == null || memoryId <= 0) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "memoryId 必须为正整数");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "memoryId must be positive");
         }
-        return chatMessageRepository.findByMemoryIdOrderByCreatedAtAsc(memoryId).stream()
+        return chatMessageRepository.findByMemoryIdAndUserIdOrderByCreatedAtAsc(memoryId, userId).stream()
                 .map(ChatMessageView::from)
                 .toList();
     }
 
-    private void upsertSession(Integer memoryId, String roleId, String message) {
-        ConversationSession session = conversationSessionRepository.findByMemoryId(memoryId)
+    private void upsertSession(Integer memoryId, String roleId, String message, Long userId) {
+        ConversationSession session = conversationSessionRepository.findByMemoryIdAndUserId(memoryId, userId)
                 .orElseGet(() -> {
                     ConversationSession newSession = new ConversationSession();
                     newSession.setMemoryId(memoryId);
+                    newSession.setUserId(userId);
                     newSession.setTitle(buildTitle(message));
                     return newSession;
                 });
+        session.setUserId(userId);
         session.setRoleId(normalizeRoleId(roleId));
         if (session.getTitle() == null || session.getTitle().isBlank()) {
             session.setTitle(buildTitle(message));
@@ -66,9 +68,10 @@ public class ChatPersistenceService {
         conversationSessionRepository.save(session);
     }
 
-    private void saveMessage(Integer memoryId, String sender, String roleId, String content) {
+    private void saveMessage(Integer memoryId, String sender, String roleId, String content, Long userId) {
         ChatMessage chatMessage = new ChatMessage();
         chatMessage.setMemoryId(memoryId);
+        chatMessage.setUserId(userId);
         chatMessage.setSender(sender);
         chatMessage.setRoleId(normalizeRoleId(roleId));
         chatMessage.setContent(content);
@@ -78,7 +81,7 @@ public class ChatPersistenceService {
     private String buildTitle(String text) {
         String cleaned = (text == null ? "" : text.trim()).replaceAll("\\s+", " ");
         if (cleaned.isEmpty()) {
-            return "新会话";
+            return "New Session";
         }
         return cleaned.length() > 40 ? cleaned.substring(0, 40) : cleaned;
     }
@@ -90,3 +93,4 @@ public class ChatPersistenceService {
         return roleId;
     }
 }
+

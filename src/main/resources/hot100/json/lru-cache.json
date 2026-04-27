@@ -2,6 +2,7 @@
   "problemId": 146,
   "title": "LRU 缓存",
   "slug": "lru-cache",
+  "leetCodeUrl": "https://leetcode.cn/problems/lru-cache/",
   "difficulty": "medium",
   "tags": ["design", "hash-table", "linked-list"],
   "pattern": "哈希表 + 双向链表",

@@ -1,7 +1,8 @@
-{
+﻿{
   "problemId": 3,
   "title": "无重复字符的最长子串",
   "slug": "longest-substring-without-repeating-characters",
+  "leetCodeUrl": "https://leetcode.cn/problems/longest-substring-without-repeating-characters/",
   "difficulty": "medium",
   "tags": ["hash-table", "string", "sliding-window"],
   "pattern": "滑动窗口",
@@ -10,3 +11,4 @@
   "pitfalls": "left 更新应取 max(left, lastIndex+1)；下标与长度换算要正确。",
   "complexity": "O(n) time, O(k) space"
 }
+

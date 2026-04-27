@@ -2,6 +2,7 @@
   "problemId": 102,
   "title": "二叉树的层序遍历",
   "slug": "binary-tree-level-order-traversal",
+  "leetCodeUrl": "https://leetcode.cn/problems/binary-tree-level-order-traversal/",
   "difficulty": "medium",
   "tags": ["tree", "breadth-first-search", "binary-tree", "queue"],
   "pattern": "BFS 按层遍历",

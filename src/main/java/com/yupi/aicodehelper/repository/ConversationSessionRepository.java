@@ -11,4 +11,8 @@ public interface ConversationSessionRepository extends JpaRepository<Conversatio
     Optional<ConversationSession> findByMemoryId(Integer memoryId);
 
     List<ConversationSession> findAllByOrderByUpdatedAtDesc();
+
+    Optional<ConversationSession> findByMemoryIdAndUserId(Integer memoryId, Long userId);
+
+    List<ConversationSession> findAllByUserIdOrderByUpdatedAtDesc(Long userId);
 }

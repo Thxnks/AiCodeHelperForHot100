@@ -3,6 +3,7 @@ package com.yupi.aicodehelper.controller;
 import com.yupi.aicodehelper.chat.ChatMessageView;
 import com.yupi.aicodehelper.chat.ChatPersistenceService;
 import com.yupi.aicodehelper.chat.ConversationSessionView;
+import com.yupi.aicodehelper.auth.CurrentUserService;
 import com.yupi.aicodehelper.common.BaseResponse;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,13 +20,18 @@ public class ChatSessionController {
     @Resource
     private ChatPersistenceService chatPersistenceService;
 
+    @Resource
+    private CurrentUserService currentUserService;
+
     @GetMapping
     public BaseResponse<List<ConversationSessionView>> listSessions() {
-        return BaseResponse.success(chatPersistenceService.listSessions());
+        Long userId = currentUserService.requireUserId();
+        return BaseResponse.success(chatPersistenceService.listSessions(userId));
     }
 
     @GetMapping("/{memoryId}/messages")
     public BaseResponse<List<ChatMessageView>> listMessages(@PathVariable Integer memoryId) {
-        return BaseResponse.success(chatPersistenceService.listMessages(memoryId));
+        Long userId = currentUserService.requireUserId();
+        return BaseResponse.success(chatPersistenceService.listMessages(memoryId, userId));
     }
 }

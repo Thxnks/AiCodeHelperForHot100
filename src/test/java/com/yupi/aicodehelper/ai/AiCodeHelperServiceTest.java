@@ -1,7 +1,9 @@
 package com.yupi.aicodehelper.ai;
 
+import dev.langchain4j.guardrail.InputGuardrailException;
 import dev.langchain4j.rag.content.Content;
 import dev.langchain4j.service.Result;
+import org.junit.jupiter.api.Tag;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -10,7 +12,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "spring.rabbitmq.listener.simple.auto-startup=false"
+})
+@Tag("slow")
 class AiCodeHelperServiceTest {
 
     @Resource
@@ -60,7 +65,6 @@ class AiCodeHelperServiceTest {
 
     @Test
     void chatWithGuardrail() {
-        String result = aiCodeHelperService.chat("kill the game");
-        System.out.println(result);
+        assertThrows(InputGuardrailException.class, () -> aiCodeHelperService.chat("kill the game"));
     }
 }

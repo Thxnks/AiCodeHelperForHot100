@@ -23,6 +23,9 @@ public class ChatMessage {
     @Column(name = "memory_id", nullable = false)
     private Integer memoryId;
 
+    @Column(name = "user_id")
+    private Long userId;
+
     @Column(name = "sender", nullable = false, length = 32)
     private String sender;
 

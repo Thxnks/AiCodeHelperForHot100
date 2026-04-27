@@ -2,6 +2,7 @@
   "problemId": 49,
   "title": "字母异位词分组",
   "slug": "group-anagrams",
+  "leetCodeUrl": "https://leetcode.cn/problems/group-anagrams/",
   "difficulty": "medium",
   "tags": ["array", "string", "hash-table", "sorting"],
   "pattern": "哈希分组",

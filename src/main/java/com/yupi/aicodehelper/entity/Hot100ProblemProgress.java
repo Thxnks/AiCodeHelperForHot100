@@ -8,12 +8,16 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "hot100_problem_progress")
+@Table(name = "hot100_problem_progress",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_hot100_user_problem", columnNames = {"user_id", "problem_slug"})
+        })
 @Data
 public class Hot100ProblemProgress {
 
@@ -21,8 +25,11 @@ public class Hot100ProblemProgress {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "problem_slug", nullable = false, unique = true, length = 120)
+    @Column(name = "problem_slug", nullable = false, length = 120)
     private String problemSlug;
+
+    @Column(name = "user_id")
+    private Long userId;
 
     @Column(name = "status", nullable = false, length = 24)
     private String status;

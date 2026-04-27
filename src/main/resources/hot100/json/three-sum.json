@@ -1,7 +1,8 @@
-{
+﻿{
   "problemId": 15,
   "title": "三数之和",
   "slug": "three-sum",
+  "leetCodeUrl": "https://leetcode.cn/problems/3sum/",
   "difficulty": "medium",
   "tags": ["array", "two-pointers", "sorting"],
   "pattern": "排序 + 双指针",
@@ -10,3 +11,4 @@
   "pitfalls": "i、left、right 三处都要处理去重；边界判断要完整。",
   "complexity": "O(n^2) time, O(log n)~O(n) extra (sorting)"
 }
+

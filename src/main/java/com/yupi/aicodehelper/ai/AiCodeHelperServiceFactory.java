@@ -1,6 +1,7 @@
 package com.yupi.aicodehelper.ai;
 
 import com.alibaba.dashscope.assistants.Assistant;
+import com.yupi.aicodehelper.ai.tools.Hot100Tool;
 import com.yupi.aicodehelper.ai.tools.InterviewQuestionTool;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.loader.FileSystemDocumentLoader;
@@ -20,6 +21,7 @@ import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -35,26 +37,35 @@ public class AiCodeHelperServiceFactory {
     private StreamingChatModel qwenStreamingChatModel;
 
     @Resource
-    private ContentRetriever contentRetriever;
+    private ObjectProvider<ContentRetriever> contentRetrieverProvider;
 
     @Resource
-    private McpToolProvider mcpToolProvider;
+    private ObjectProvider<McpToolProvider> mcpToolProviderProvider;
+
+    @Resource
+    private Hot100Tool hot100Tool;
 
     @Bean
     public AiCodeHelperService aiCodeHelperService() {
         // 会话记忆
         ChatMemory chatMemory = MessageWindowChatMemory.withMaxMessages(10);
         // 构造 AI Service
-        AiCodeHelperService aiCodeHelperService = AiServices.builder(AiCodeHelperService.class)
+        var builder = AiServices.builder(AiCodeHelperService.class)
                 .chatModel(myQwenChatModel)
                 .streamingChatModel(qwenStreamingChatModel)
                 .chatMemory(chatMemory)
                 .chatMemoryProvider(memoryId ->
                         MessageWindowChatMemory.withMaxMessages(10)) // 每个会话独立存储
-                .contentRetriever(contentRetriever) // RAG 检索增强生成
-                .tools(new InterviewQuestionTool()) // 工具调用
-                .toolProvider(mcpToolProvider) // MCP 工具调用
-                .build();
-        return aiCodeHelperService;
+                .tools(new InterviewQuestionTool(), hot100Tool) // 工具调用
+                ;
+        ContentRetriever contentRetriever = contentRetrieverProvider.getIfAvailable();
+        if (contentRetriever != null) {
+            builder.contentRetriever(contentRetriever); // RAG 检索增强生成
+        }
+        McpToolProvider mcpToolProvider = mcpToolProviderProvider.getIfAvailable();
+        if (mcpToolProvider != null) {
+            builder.toolProvider(mcpToolProvider); // MCP 工具调用
+        }
+        return builder.build();
     }
 }

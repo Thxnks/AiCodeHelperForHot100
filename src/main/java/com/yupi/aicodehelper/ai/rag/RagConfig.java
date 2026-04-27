@@ -1,7 +1,7 @@
 package com.yupi.aicodehelper.ai.rag;
 
 import dev.langchain4j.data.document.Document;
-import dev.langchain4j.data.document.loader.FileSystemDocumentLoader;
+import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.document.splitter.DocumentByParagraphSplitter;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -10,15 +10,20 @@ import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
 import jakarta.annotation.Resource;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.support.ResourcePatternResolver;
+import org.springframework.core.io.support.ResourcePatternUtils;
+import org.springframework.util.StreamUtils;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 加载 RAG
- */
 @Configuration
+@ConditionalOnProperty(prefix = "app.rag", name = "enabled", havingValue = "true")
 public class RagConfig {
 
     @Resource
@@ -29,32 +34,56 @@ public class RagConfig {
 
     @Bean
     public ContentRetriever contentRetriever() {
-        // ------ RAG ------
-        // 1. 加载文档
-        List<Document> documents = FileSystemDocumentLoader.loadDocuments("src/main/resources/docs");
-        // 2. 文档切割：将每个文档按每段进行分割，最大 1000 字符，每次重叠最多 200 个字符
+        // 1) Load RAG documents from classpath so it works in IDE and Docker/JAR runtime.
+        List<Document> documents = loadClasspathDocuments("classpath:docs/**/*");
+
+        // 2) Split documents into paragraphs.
         DocumentByParagraphSplitter paragraphSplitter = new DocumentByParagraphSplitter(1000, 200);
-        // 3. 自定义文档加载器
+
+        // 3) Ingest documents into embedding store.
         EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
                 .documentSplitter(paragraphSplitter)
-                // 为了提高搜索质量，为每个 TextSegment 添加文档名称
                 .textSegmentTransformer(textSegment -> TextSegment.from(
                         textSegment.metadata().getString("file_name") + "\n" + textSegment.text(),
                         textSegment.metadata()
                 ))
-                // 使用指定的向量模型
                 .embeddingModel(qwenEmbeddingModel)
                 .embeddingStore(embeddingStore)
                 .build();
-        // 加载文档
         ingestor.ingest(documents);
-        // 4. 自定义内容查询器
-        ContentRetriever contentRetriever = EmbeddingStoreContentRetriever.builder()
+
+        // 4) Build content retriever.
+        return EmbeddingStoreContentRetriever.builder()
                 .embeddingStore(embeddingStore)
                 .embeddingModel(qwenEmbeddingModel)
-                .maxResults(5) // 最多 5 个检索结果
-                .minScore(0.75) // 过滤掉分数小于 0.75 的结果
+                .maxResults(5)
+                .minScore(0.75)
                 .build();
-        return contentRetriever;
+    }
+
+    private List<Document> loadClasspathDocuments(String resourcePattern) {
+        try {
+            ResourcePatternResolver resolver = ResourcePatternUtils.getResourcePatternResolver(null);
+            org.springframework.core.io.Resource[] resources = resolver.getResources(resourcePattern);
+            List<Document> documents = new ArrayList<>();
+            for (org.springframework.core.io.Resource resource : resources) {
+                if (!resource.exists() || !resource.isReadable()) {
+                    continue;
+                }
+                String filename = resource.getFilename();
+                if (filename == null || filename.isBlank()) {
+                    continue;
+                }
+                String text = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
+                if (text.isBlank()) {
+                    continue;
+                }
+                Metadata metadata = Metadata.from(Document.FILE_NAME, filename);
+                documents.add(Document.from(text, metadata));
+            }
+            return documents;
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load RAG documents from classpath", e);
+        }
     }
 }

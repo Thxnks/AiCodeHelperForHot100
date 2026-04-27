@@ -2,6 +2,7 @@
   "problemId": 1,
   "title": "两数之和",
   "slug": "two-sum",
+  "leetCodeUrl": "https://leetcode.cn/problems/two-sum/",
   "difficulty": "easy",
   "tags": ["array", "hash-table"],
   "pattern": "哈希表一次遍历",

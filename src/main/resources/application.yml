@@ -1,21 +1,102 @@
 spring:
   application:
     name: ai-code-helper
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:ai_code_helper}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 2s
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    listener:
+      simple:
+        prefetch: 1
+        concurrency: 1
+        max-concurrency: 4
+        missing-queues-fatal: false
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        session:
+          events:
+            log:
+              LOG_QUERIES_SLOWER_THAN_MS: ${APP_DB_SLOW_QUERY_MS:200}
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
 server:
   port: 8081
   servlet:
     context-path: /api
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
 langchain4j:
   community:
     dashscope:
       chat-model:
         model-name: qwen-max
-        api-key: <Your API Key>
+        api-key: ${DASHSCOPE_API_KEY:}
       streaming-chat-model:
         model-name: qwen-max
-        api-key: <Your API Key>
+        api-key: ${DASHSCOPE_API_KEY:}
       embedding-model:
         model-name: text-embedding-v4
-        api-key: <Your API Key>
+        api-key: ${DASHSCOPE_API_KEY:}
 bigmodel:
-  api-key: <Your API Key>
+  enabled: false
+  api-key: ${BIGMODEL_API_KEY:}
+app:
+  cache:
+    redis-enabled: ${APP_CACHE_REDIS_ENABLED:true}
+    hot100-problem-ttl-seconds: ${APP_CACHE_HOT100_PROBLEM_TTL_SECONDS:300}
+    hot100-recommendation-ttl-seconds: ${APP_CACHE_HOT100_RECOMMENDATION_TTL_SECONDS:180}
+    hot100-study-plan-ttl-seconds: ${APP_CACHE_HOT100_STUDY_PLAN_TTL_SECONDS:180}
+    hot100-tag-mastery-ttl-seconds: ${APP_CACHE_HOT100_TAG_MASTERY_TTL_SECONDS:180}
+  auth:
+    jwt-secret: ${APP_AUTH_JWT_SECRET:change-this-to-a-secure-secret-with-32-chars}
+    access-token-expire-seconds: ${APP_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS:7200}
+    refresh-token-expire-seconds: ${APP_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS:604800}
+  roles:
+    default-role-id: assistant
+    config-path: classpath:roles/*.json
+  mcp:
+    enabled: false
+    sse-url: https://open.bigmodel.cn/api/mcp/web_search/sse
+    reconnect-interval-seconds: 30
+  rag:
+    enabled: true
+  hot100:
+    metadata-path: classpath:hot100/json/*.json
+    markdown-base-path: classpath:hot100/markdown/

@@ -2,6 +2,7 @@
   "problemId": 21,
   "title": "合并两个有序链表",
   "slug": "merge-two-sorted-lists",
+  "leetCodeUrl": "https://leetcode.cn/problems/merge-two-sorted-lists/",
   "difficulty": "easy",
   "tags": ["linked-list", "recursion"],
   "pattern": "双指针链表归并",

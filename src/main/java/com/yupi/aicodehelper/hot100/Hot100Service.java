@@ -2,6 +2,7 @@ package com.yupi.aicodehelper.hot100;
 
 import com.yupi.aicodehelper.common.ErrorCode;
 import com.yupi.aicodehelper.exception.BusinessException;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -19,6 +20,10 @@ public class Hot100Service {
         this.hot100ProblemLoader = hot100ProblemLoader;
     }
 
+    @Cacheable(
+            cacheNames = Hot100CacheNames.PROBLEM_LIST,
+            key = "T(java.util.Objects).toString(#keyword,'') + '|' + T(java.util.Objects).toString(#tag,'') + '|' + T(java.util.Objects).toString(#difficulty,'')"
+    )
     public List<Hot100ProblemSummaryView> listProblems(String keyword, String tag, String difficulty) {
         return hot100ProblemLoader.listAll().stream()
                 .filter(problem -> matchKeyword(problem, keyword))
@@ -28,17 +33,19 @@ public class Hot100Service {
                 .toList();
     }
 
+    @Cacheable(cacheNames = Hot100CacheNames.PROBLEM_DETAIL, key = "#slug")
     public Hot100ProblemDetailView getProblem(String slug) {
         if (slug == null || slug.isBlank()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "slug 不能为空");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "slug cannot be blank");
         }
         Hot100Problem problem = hot100ProblemLoader.getBySlug(slug);
         if (problem == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "Hot100 题目不存在: " + slug);
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Hot100 problem not found: " + slug);
         }
         return Hot100ProblemDetailView.from(problem);
     }
 
+    @Cacheable(cacheNames = Hot100CacheNames.TAG_LIST)
     public List<String> listTags() {
         return hot100ProblemLoader.listAll().stream()
                 .flatMap(problem -> problem.getTags() == null ? Stream.empty() : problem.getTags().stream())
@@ -73,10 +80,22 @@ public class Hot100Service {
         if (difficulty == null || difficulty.isBlank()) {
             return true;
         }
-        return difficulty.trim().equalsIgnoreCase(problem.getDifficulty());
+        String expected = normalizeDifficulty(difficulty);
+        String actual = normalizeDifficulty(problem.getDifficulty());
+        return !actual.isEmpty() && expected.equals(actual);
     }
 
     private boolean contains(String value, String needle) {
         return value != null && value.toLowerCase(Locale.ROOT).contains(needle);
+    }
+
+    private String normalizeDifficulty(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT)
+                .replace(" ", "")
+                .replace("_", "")
+                .replace("-", "");
     }
 }
