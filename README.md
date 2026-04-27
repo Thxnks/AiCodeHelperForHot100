@@ -1,59 +1,59 @@
 # AI Code Helper For Hot100
 
-基于 `Spring Boot 3 + Vue 3 + LangChain4j` 的全栈项目，目标是提供一个可运行、可扩展的 AI 编程学习与 Hot100 训练助手。
+A full-stack project built with `Spring Boot 3 + Vue 3 + LangChain4j`, focused on an AI coding assistant and Hot100 training workflow that is runnable and extensible.
 
-## 核心能力
+## Core Features
 
-- AI 对话与代码辅助（LangChain4j + DashScope）
-- 用户认证（注册 / 登录 / 刷新 Token）
-- 会话与消息持久化
-- Hot100 题库、进度跟踪与学习数据接口
-- 缓存（Redis）、消息队列（RabbitMQ）、数据库迁移（Flyway）
-- Docker Compose 一键拉起完整环境
+- AI chat and coding assistance (LangChain4j + DashScope)
+- User authentication (register / login / refresh token)
+- Conversation and message persistence
+- Hot100 dataset, progress tracking, and learning analytics APIs
+- Redis cache, RabbitMQ async processing, Flyway DB migrations
+- One-command Docker Compose deployment for the full stack
 
-## 技术栈
+## Tech Stack
 
 - Backend: `Java 21`, `Spring Boot 3.5.3`, `Spring Security`, `Spring Data JPA`, `Flyway`, `Redis`, `RabbitMQ`
 - AI: `LangChain4j 1.1.0` + `DashScope`
 - Frontend: `Vue 3`
 - Database: `MySQL 8.0`
-- Deploy: `Docker`, `Docker Compose`
+- Deployment: `Docker`, `Docker Compose`
 
-## 快速开始（推荐：Docker）
+## Quick Start (Recommended: Docker)
 
-### 1) 准备环境变量
+### 1) Prepare environment files
 
 ```bash
 cp .env.example .env
 cp ai-code-helper-frontend/.env.example ai-code-helper-frontend/.env
 ```
 
-Windows PowerShell 可用：
+For Windows PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 Copy-Item ai-code-helper-frontend/.env.example ai-code-helper-frontend/.env
 ```
 
-至少需要配置：
+Minimum required values in `.env`:
 
 - `DASHSCOPE_API_KEY`
-- `APP_AUTH_JWT_SECRET`（建议 32 位以上随机字符串）
+- `APP_AUTH_JWT_SECRET` (use a strong random string with at least 32 characters)
 
-### 2) 启动全栈
+### 2) Start all services
 
 ```bash
 docker compose up -d --build
 ```
 
-### 3) 访问与验证
+### 3) Access endpoints
 
 - Frontend: `http://localhost:3001`
 - Backend Health: `http://localhost:8081/api/health`
 - Swagger UI: `http://localhost:8081/api/swagger-ui.html`
-- RabbitMQ 管理台: `http://localhost:15672`（默认 `guest/guest`）
+- RabbitMQ Console: `http://localhost:15672` (default `guest/guest`)
 
-## 本地开发启动（非 Docker）
+## Local Development (Without Docker)
 
 ### Backend
 
@@ -75,68 +75,68 @@ npm install
 npm run dev
 ```
 
-## 常用命令
+## Useful Commands
 
 ```bash
-# 查看日志
+# View logs
 docker compose logs -f backend
 docker compose logs -f frontend
 
-# 重启后端
+# Restart backend only
 docker compose restart backend
 
-# 停止容器
+# Stop all containers
 docker compose down
 
-# 停止并清空数据卷（MySQL/Redis/RabbitMQ）
+# Stop and remove data volumes (MySQL/Redis/RabbitMQ)
 docker compose down -v
 ```
 
-## 环境变量说明（后端）
+## Environment Variables
 
-参考 `.env.example`：
+See `.env.example` for full backend variables:
 
 - AI: `DASHSCOPE_API_KEY`, `BIGMODEL_API_KEY`
 - MySQL: `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USERNAME`, `MYSQL_PASSWORD`
 - Redis: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DATABASE`
 - RabbitMQ: `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD`, `RABBITMQ_VHOST`
 - Auth: `APP_AUTH_JWT_SECRET`, `APP_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS`, `APP_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS`
-- Cache: `APP_CACHE_REDIS_ENABLED` 及 `APP_CACHE_*_TTL_SECONDS`
+- Cache: `APP_CACHE_REDIS_ENABLED` and `APP_CACHE_*_TTL_SECONDS`
 
-前端变量见 `ai-code-helper-frontend/.env.example`：
+Frontend variables are in `ai-code-helper-frontend/.env.example`:
 
 - `VITE_API_BASE_URL`
 
-## 主要接口入口
+## Main API Entry Points
 
-- `/api/health` 健康检查
-- `/api/swagger-ui.html` API 文档
-- 业务控制器位于 `src/main/java/com/yupi/aicodehelper/controller`
+- `/api/health` health check
+- `/api/swagger-ui.html` API docs
+- Controller source path: `src/main/java/com/yupi/aicodehelper/controller`
 
-## 项目目录
+## Project Structure
 
 ```text
 .
-├── ai-code-helper-frontend/      # 前端工程
-├── src/main/java/                # 后端源码
+├── ai-code-helper-frontend/      # Frontend app
+├── src/main/java/                # Backend source code
 ├── src/main/resources/
-│   ├── db/migration/             # Flyway SQL
-│   ├── hot100/                   # Hot100 数据
-│   └── roles/                    # 角色配置
+│   ├── db/migration/             # Flyway SQL migrations
+│   ├── hot100/                   # Hot100 dataset files
+│   └── roles/                    # Role configs
 ├── docker-compose.yml
 ├── Dockerfile
-└── docs/                         # 设计与交付文档
+└── docs/                         # Design and delivery documents
 ```
 
-## 相关文档
+## Additional Docs
 
-- [Docker 交付说明](docs/week4-delivery.md)
-- [数据库设计](docs/week2-db-engineering.md)
-- [迁移切换 Runbook](docs/week2-migration-cutover-runbook.md)
-- [异步任务设计](docs/week3-async-tasks.md)
-- [缓存一致性](docs/week3-cache-consistency.md)
-- [API 合同示例](docs/api-contract-examples.md)
+- [Docker Delivery Guide](docs/week4-delivery.md)
+- [Database Engineering](docs/week2-db-engineering.md)
+- [Migration Cutover Runbook](docs/week2-migration-cutover-runbook.md)
+- [Async Task Design](docs/week3-async-tasks.md)
+- [Cache Consistency](docs/week3-cache-consistency.md)
+- [API Contract Examples](docs/api-contract-examples.md)
 
-## 说明
+## Notes
 
-本仓库已通过 `.gitignore` 忽略本地敏感与运行时文件（如 `.env`、`data/`），请勿提交真实密钥。
+Local sensitive/runtime files are ignored by `.gitignore` (for example `.env` and `data/`). Do not commit real API keys or secrets.
