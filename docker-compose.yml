@@ -1,0 +1,112 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ai-code-helper-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_code_helper}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-code-helper-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: ai-code-helper-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-code-helper-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      BIGMODEL_API_KEY: ${BIGMODEL_API_KEY:-}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_code_helper}
+      MYSQL_USERNAME: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-root}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DATABASE: ${REDIS_DATABASE:-0}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      APP_AUTH_JWT_SECRET: ${APP_AUTH_JWT_SECRET:-change-this-to-a-secure-secret-with-32-chars}
+      APP_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS: ${APP_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS:-7200}
+      APP_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS: ${APP_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS:-604800}
+      APP_DB_SLOW_QUERY_MS: ${APP_DB_SLOW_QUERY_MS:-200}
+      APP_CACHE_REDIS_ENABLED: ${APP_CACHE_REDIS_ENABLED:-true}
+      APP_CACHE_HOT100_PROBLEM_TTL_SECONDS: ${APP_CACHE_HOT100_PROBLEM_TTL_SECONDS:-300}
+      APP_CACHE_HOT100_RECOMMENDATION_TTL_SECONDS: ${APP_CACHE_HOT100_RECOMMENDATION_TTL_SECONDS:-180}
+      APP_CACHE_HOT100_STUDY_PLAN_TTL_SECONDS: ${APP_CACHE_HOT100_STUDY_PLAN_TTL_SECONDS:-180}
+      APP_CACHE_HOT100_TAG_MASTERY_TTL_SECONDS: ${APP_CACHE_HOT100_TAG_MASTERY_TTL_SECONDS:-180}
+      APP_RAG_ENABLED: ${APP_RAG_ENABLED:-false}
+    ports:
+      - "8081:8081"
+
+  frontend:
+    build:
+      context: ./ai-code-helper-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8081/api}
+    container_name: ai-code-helper-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3001:80"
+
+volumes:
+  mysql_data:
+  redis_data:
+  rabbitmq_data:

@@ -1,0 +1,8 @@
+.git
+.idea
+target
+**/target
+**/node_modules
+ai-code-helper-frontend/dist
+.env
+*.log
