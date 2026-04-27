@@ -1,0 +1,12 @@
+{
+  "problemId": 15,
+  "title": "三数之和",
+  "slug": "three-sum",
+  "difficulty": "medium",
+  "tags": ["array", "two-pointers", "sorting"],
+  "pattern": "排序 + 双指针",
+  "summary": "找出所有和为 0 的不重复三元组。",
+  "coreIdea": "先排序，固定 i 后在 [i+1, n-1] 用双指针逼近；通过跳重避免重复答案。",
+  "pitfalls": "i、left、right 三处都要处理去重；边界判断要完整。",
+  "complexity": "O(n^2) time, O(log n)~O(n) extra (sorting)"
+}

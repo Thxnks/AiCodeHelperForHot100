@@ -1,0 +1,12 @@
+{
+  "problemId": 102,
+  "title": "二叉树的层序遍历",
+  "slug": "binary-tree-level-order-traversal",
+  "difficulty": "medium",
+  "tags": ["tree", "breadth-first-search", "binary-tree", "queue"],
+  "pattern": "BFS 按层遍历",
+  "summary": "按层返回二叉树节点值。",
+  "coreIdea": "队列每轮处理当前层节点数量 size，收集该层结果后进入下一层。",
+  "pitfalls": "每层循环前固定 size；避免把新入队节点算入当前层。",
+  "complexity": "O(n) time, O(n) space"
+}

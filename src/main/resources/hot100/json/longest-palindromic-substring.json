@@ -1,0 +1,12 @@
+{
+  "problemId": 5,
+  "title": "最长回文子串",
+  "slug": "longest-palindromic-substring",
+  "difficulty": "medium",
+  "tags": ["string", "dynamic-programming", "two-pointers"],
+  "pattern": "中心扩展",
+  "summary": "返回字符串中的最长回文子串。",
+  "coreIdea": "以每个字符和字符缝隙为中心向两侧扩展，记录最长区间。",
+  "pitfalls": "要同时处理奇偶中心；子串边界为闭区间时注意截取长度。",
+  "complexity": "O(n^2) time, O(1) space"
+}

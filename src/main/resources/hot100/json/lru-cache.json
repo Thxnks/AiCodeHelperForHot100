@@ -1,0 +1,12 @@
+{
+  "problemId": 146,
+  "title": "LRU 缓存",
+  "slug": "lru-cache",
+  "difficulty": "medium",
+  "tags": ["design", "hash-table", "linked-list"],
+  "pattern": "哈希表 + 双向链表",
+  "summary": "实现支持 O(1) get/put 的最近最少使用缓存。",
+  "coreIdea": "哈希表定位节点，双向链表维护访问顺序；每次访问都移到头部，超容时淘汰尾部。",
+  "pitfalls": "链表断连与重连要原子化；更新已有 key 时也要移动到头部。",
+  "complexity": "O(1) average for get/put, O(capacity) space"
+}

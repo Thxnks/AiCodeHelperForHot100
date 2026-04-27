@@ -1,0 +1,12 @@
+{
+  "problemId": 3,
+  "title": "无重复字符的最长子串",
+  "slug": "longest-substring-without-repeating-characters",
+  "difficulty": "medium",
+  "tags": ["hash-table", "string", "sliding-window"],
+  "pattern": "滑动窗口",
+  "summary": "求字符串中不含重复字符的最长连续子串长度。",
+  "coreIdea": "right 扩张窗口，若重复则 left 收缩直到合法，持续更新窗口最大长度。",
+  "pitfalls": "left 更新应取 max(left, lastIndex+1)；下标与长度换算要正确。",
+  "complexity": "O(n) time, O(k) space"
+}

@@ -1,0 +1,12 @@
+{
+  "problemId": 21,
+  "title": "合并两个有序链表",
+  "slug": "merge-two-sorted-lists",
+  "difficulty": "easy",
+  "tags": ["linked-list", "recursion"],
+  "pattern": "双指针链表归并",
+  "summary": "将两个升序链表合并为一个新的升序链表并返回头结点。",
+  "coreIdea": "设置虚拟头结点，比较两个指针当前值，较小者接入结果链并前进。",
+  "pitfalls": "循环结束后要把剩余链表整体接上；避免丢失 next 指针。",
+  "complexity": "O(m+n) time, O(1) extra space"
+}

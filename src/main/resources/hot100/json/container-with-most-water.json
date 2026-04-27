@@ -1,0 +1,12 @@
+{
+  "problemId": 11,
+  "title": "盛最多水的容器",
+  "slug": "container-with-most-water",
+  "difficulty": "medium",
+  "tags": ["array", "two-pointers", "greedy"],
+  "pattern": "双指针收缩",
+  "summary": "从数组中选两条线形成容器，求最大面积。",
+  "coreIdea": "面积由短板决定，移动短板指针才有机会增大面积。",
+  "pitfalls": "不要移动长板；每一步都要先更新答案再移动指针。",
+  "complexity": "O(n) time, O(1) space"
+}

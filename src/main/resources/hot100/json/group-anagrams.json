@@ -1,0 +1,12 @@
+{
+  "problemId": 49,
+  "title": "字母异位词分组",
+  "slug": "group-anagrams",
+  "difficulty": "medium",
+  "tags": ["array", "string", "hash-table", "sorting"],
+  "pattern": "哈希分组",
+  "summary": "把字符串数组按字母异位词分组。",
+  "coreIdea": "对每个字符串生成标准键（排序后字符串或计数签名），同键归同组。",
+  "pitfalls": "键构造必须无冲突；注意空字符串也要正确分组。",
+  "complexity": "O(n * k log k) time, O(nk) space"
+}

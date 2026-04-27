@@ -1,0 +1,12 @@
+{
+  "problemId": 1,
+  "title": "两数之和",
+  "slug": "two-sum",
+  "difficulty": "easy",
+  "tags": ["array", "hash-table"],
+  "pattern": "哈希表一次遍历",
+  "summary": "在数组中找到和为 target 的两个下标，返回任意一组有效解。",
+  "coreIdea": "遍历当前值 x 时，先查 target-x 是否已出现；出现则返回，否则把 x 放入 map。",
+  "pitfalls": "不要先插入再查找；注意返回下标而非数值。",
+  "complexity": "O(n) time, O(n) space"
+}
