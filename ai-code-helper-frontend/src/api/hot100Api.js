@@ -66,6 +66,13 @@ export async function fetchHot100WeakTags() {
   return asArray(unwrapBusinessResponse(response.data, 'Weak tag list failed'))
 }
 
+export async function fetchHot100WrongBook() {
+  const response = await apiClient.get('/hot100/wrong-book', {
+    timeout: 8000
+  })
+  return asArray(unwrapBusinessResponse(response.data, 'Wrong book query failed'))
+}
+
 export async function fetchHot100Recommendations(limit = 5) {
   try {
     const submitResponse = await apiClient.post(

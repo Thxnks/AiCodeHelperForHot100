@@ -123,8 +123,8 @@
         </div>
         <header class="hot100-header">
           <div class="hot100-title-wrap">
-            <button v-if="hot100View === 'detail'" @click="backToProblemList" class="back-btn" type="button">返回</button>
-            <h2>{{ hot100View === 'detail' ? '题目详情' : 'Hot100 题库' }}</h2>
+            <button v-if="hot100View !== 'list'" @click="backToProblemList" class="back-btn" type="button">返回</button>
+            <h2>{{ hot100Title }}</h2>
           </div>
           <div class="dataset-stats" v-if="datasetStats">
             已录入 {{ datasetStats.loadedCount }}/{{ datasetStats.targetCount }}
@@ -157,6 +157,14 @@
             </select>
           </div>
           <button @click="clearFilters" class="clear-btn" type="button">清空筛选</button>
+          <button
+            v-if="currentUser"
+            @click="openWrongBook"
+            class="wrong-book-btn"
+            type="button"
+          >
+            错题本（{{ wrongBook.length }}）
+          </button>
           <div v-if="!currentUser" class="auth-tip">
             登录后可保存做题进度、查看标签掌握度和推荐题单
             <button type="button" @click="openAuthModal('login')">立即登录</button>
@@ -206,6 +214,38 @@
             </div>
             <div v-if="!isHot100Loading && hot100Problems.length === 0" class="empty-list">
               没有匹配题目
+            </div>
+          </div>
+        </div>
+
+        <div class="hot100-body" v-else-if="hot100View === 'wrongBook'">
+          <div class="wrong-book-view">
+            <div class="wrong-book-summary">
+              <strong>错题本</strong>
+              <span>共 {{ wrongBook.length }} 题，按最近标记为做错的记录排序。</span>
+            </div>
+            <div class="problem-list list-only">
+              <div
+                v-for="problem in wrongBook"
+                :key="problem.slug"
+                class="problem-item"
+                :class="{ active: selectedProblem?.slug === problem.slug }"
+                @click="selectProblem(problem.slug)"
+              >
+                <div class="problem-top">
+                  <span class="problem-title">{{ problem.title }}</span>
+                  <div class="problem-meta">
+                    <span class="difficulty">{{ problem.difficulty }}</span>
+                    <span class="status-badge is-wrong">做错</span>
+                  </div>
+                </div>
+                <div class="problem-tags">
+                  <span v-for="tag in problem.tags" :key="`wrong-${problem.slug}-${tag}`">{{ tag }}</span>
+                </div>
+              </div>
+              <div v-if="!isHot100Loading && wrongBook.length === 0" class="empty-list">
+                暂无错题，先在题目详情里把状态标记为“做错”。
+              </div>
             </div>
           </div>
         </div>
@@ -316,6 +356,7 @@ import {
   fetchHot100TagMastery,
   fetchHot100Tags,
   fetchHot100WeakTags,
+  fetchHot100WrongBook,
   upsertHot100Progress
 } from './api/hot100Api.js'
 import { fetchErrorCodeDictionary } from './api/metaApi.js'
@@ -361,6 +402,7 @@ export default {
       hot100Problems: [],
       selectedProblem: null,
       progressMap: {},
+      wrongBook: [],
       weakTags: [],
       recommendations: [],
       tagMastery: [],
@@ -406,6 +448,11 @@ export default {
     currentProgressRecord() {
       if (!this.selectedProblem?.slug) return null
       return this.progressMap[this.selectedProblem.slug] || null
+    },
+    hot100Title() {
+      if (this.hot100View === 'detail') return '题目详情'
+      if (this.hot100View === 'wrongBook') return '错题本'
+      return 'Hot100 题库'
     }
   },
   methods: {
@@ -530,6 +577,7 @@ export default {
       setAuthHeaderToken('')
       this.currentUser = null
       this.progressMap = {}
+      this.wrongBook = []
       this.weakTags = []
       this.recommendations = []
       this.tagMastery = []
@@ -619,6 +667,22 @@ export default {
       this.hot100Difficulty = ''
       this.searchHot100Problems()
     },
+    async openWrongBook() {
+      if (!this.currentUser) {
+        this.openAuthModal('login')
+        return
+      }
+      this.isHot100Loading = true
+      try {
+        this.wrongBook = await fetchHot100WrongBook()
+        this.selectedProblem = null
+        this.hot100View = 'wrongBook'
+      } catch (error) {
+        console.error('Failed to load wrong book:', error)
+      } finally {
+        this.isHot100Loading = false
+      }
+    },
     async selectProblem(slug) {
       try {
         this.selectedProblem = await fetchHot100ProblemDetail(slug)
@@ -705,6 +769,7 @@ export default {
     async loadLearningInsights() {
       if (!this.currentUser) {
         this.progressMap = {}
+        this.wrongBook = []
         this.weakTags = []
         this.recommendations = []
         this.tagMastery = []
@@ -721,13 +786,15 @@ export default {
           this.progressMap[item.problemSlug] = item
         }
 
-        const [weakTagsResult, recommendationsResult, tagMasteryResult, datasetStatsResult] = await Promise.allSettled([
+        const [wrongBookResult, weakTagsResult, recommendationsResult, tagMasteryResult, datasetStatsResult] = await Promise.allSettled([
+          fetchHot100WrongBook(),
           fetchHot100WeakTags(),
           fetchHot100Recommendations(5),
           fetchHot100TagMastery(),
           fetchHot100DatasetStats()
         ])
 
+        this.wrongBook = wrongBookResult.status === 'fulfilled' ? wrongBookResult.value : []
         this.weakTags = weakTagsResult.status === 'fulfilled' ? weakTagsResult.value : []
         this.recommendations = recommendationsResult.status === 'fulfilled' ? recommendationsResult.value : []
         this.tagMastery = tagMasteryResult.status === 'fulfilled' ? tagMasteryResult.value : []
@@ -1306,6 +1373,15 @@ export default {
   cursor: pointer;
 }
 
+.wrong-book-btn {
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
+  border-radius: 10px;
+  height: 34px;
+  cursor: pointer;
+}
+
 .hot100-body {
   flex: 1;
   min-height: 0;
@@ -1408,6 +1484,34 @@ export default {
   padding: 16px;
   color: #64748b;
   font-size: 13px;
+}
+
+.wrong-book-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wrong-book-summary {
+  margin: 10px 12px;
+  border: 1px solid #fecaca;
+  background: #fff7f7;
+  border-radius: 10px;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wrong-book-summary strong {
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.wrong-book-summary span {
+  color: #64748b;
+  font-size: 12px;
 }
 
 .problem-detail {
