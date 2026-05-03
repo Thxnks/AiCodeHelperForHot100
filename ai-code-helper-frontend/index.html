@@ -3,17 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 编程小助手</title>
+    <title>AI Code Helper</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
+
+        :root {
+            --font-claude-ui: "Avenir Next", Avenir, Optima, "Helvetica Neue", Arial, "Songti SC", STSong, SimSun, "Noto Serif CJK SC", serif;
+            --font-claude-display: "Avenir Next", Avenir, Optima, "Helvetica Neue", Arial, "Songti SC", STSong, SimSun, "Noto Serif CJK SC", serif;
+            --font-claude-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        }
         
+        html,
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #f0f0f0;
+            font-family: var(--font-claude-ui);
+            font-weight: 400;
+            line-height: 1.5;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background-color: #faf9f5;
+        }
+
+        button,
+        input,
+        textarea,
+        select {
+            font: inherit;
         }
         
         #app {
@@ -27,4 +46,4 @@
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
 </body>
-</html> 
+</html>

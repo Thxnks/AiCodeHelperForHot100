@@ -16,7 +16,7 @@
         <pre v-if="isUser" class="message-text">{{ message }}</pre>
         <div v-else class="message-markdown" v-html="renderedMessage"></div>
       </div>
-      <div class="message-time">{{ formatTime(timestamp) }}</div>
+      <div class="message-time">{{ displayTime(timestamp) }}</div>
     </div>
   </div>
 </template>
@@ -47,7 +47,13 @@ export default {
     }
   },
   methods: {
-    formatTime,
+    displayTime(date) {
+      const timeText = formatTime(date)
+      return timeText
+        .replace('刚刚', 'Just now')
+        .replace(' 分钟前', ' min ago')
+        .replace(' 小时前', ' hr ago')
+    },
     handleRoleAvatarError(event) {
       event.target.src = this.aiRole.avatarFallback || '/characters/sakurajima-mai.png'
     }
@@ -58,19 +64,21 @@ export default {
 <style scoped>
 .chat-message {
   display: flex;
-  margin-bottom: 18px;
-  padding: 0 20px;
+  max-width: 820px;
+  margin: 0 auto 14px;
+  padding: 0 24px;
+  animation: messageIn 220ms ease-out both;
 }
 
 .message-avatar {
-  margin: 0 10px;
+  margin: 0 12px 0 0;
   display: flex;
   align-items: flex-start;
 }
 
 .avatar {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -80,25 +88,29 @@ export default {
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  background: var(--text, #1f2421);
   color: #fff;
+  font-size: 12px;
 }
 
 .role-avatar {
   object-fit: cover;
-  border: 2px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  box-shadow: none;
 }
 
 .message-content {
-  max-width: 72%;
+  max-width: min(74%, 620px);
   min-width: 100px;
 }
 
 .message-bubble {
-  padding: 12px 16px;
+  padding: 11px 14px;
   border-radius: 16px;
   word-break: break-word;
+  box-shadow: none;
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 .user-message {
@@ -107,6 +119,7 @@ export default {
 
 .user-message .message-avatar {
   order: 2;
+  margin: 0 0 0 12px;
 }
 
 .user-message .message-content {
@@ -114,16 +127,16 @@ export default {
 }
 
 .user-message .message-bubble {
-  background: linear-gradient(130deg, #2563eb 0%, #0ea5e9 100%);
+  background: var(--app-text, #111827);
   color: #fff;
-  border-bottom-right-radius: 6px;
+  border-bottom-right-radius: 8px;
 }
 
 .ai-message .message-bubble {
-  background: #f1f5f9;
-  color: #0f172a;
-  border: 1px solid #e2e8f0;
-  border-bottom-left-radius: 6px;
+  background: #f7f7f5;
+  color: var(--app-text, #111827);
+  border: 1px solid var(--app-border, #e5e7eb);
+  border-bottom-left-radius: 8px;
 }
 
 .message-text {
@@ -138,7 +151,7 @@ export default {
 
 .message-markdown :deep(p) {
   margin: 0 0 10px;
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .message-markdown :deep(ul),
@@ -148,21 +161,40 @@ export default {
 }
 
 .message-markdown :deep(li) {
-  margin: 6px 0;
-  line-height: 1.7;
+  margin: 4px 0;
+  line-height: 1.55;
 }
 
 .message-markdown :deep(code) {
-  background: rgba(15, 23, 42, 0.08);
+  background: rgba(0, 0, 0, 0.06);
   padding: 2px 6px;
   border-radius: 6px;
 }
 
+.message-markdown :deep(pre) {
+  background: #111815;
+  color: #f8fafc;
+  padding: 12px;
+  border-radius: 12px;
+  font-family: var(--font-claude-mono);
+}
+
 .message-time {
-  margin-top: 4px;
+  margin-top: 3px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--app-faint, #9ca3af);
   padding: 0 4px;
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .user-message .message-time {
@@ -171,10 +203,56 @@ export default {
 
 @media (max-width: 768px) {
   .message-content {
-    max-width: 85%;
+    max-width: 86%;
   }
   .chat-message {
     padding: 0 10px;
+  }
+}
+
+/* Coaching chat message refinement */
+.chat-message {
+  max-width: 860px;
+  margin-bottom: 12px;
+  animation: messageIn 220ms ease-out both;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  font-weight: 600;
+}
+
+.message-content {
+  max-width: min(76%, 660px);
+}
+
+.message-bubble {
+  padding: 16px 18px;
+  border-radius: 20px;
+  font-family: var(--font-claude-ui);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.ai-message .message-bubble {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: var(--claude-border, #e5e7eb);
+}
+
+.user-message .message-bubble {
+  background: var(--claude-button, #111827);
+}
+
+.message-time {
+  color: var(--claude-faint, #9ca3af);
+  font-size: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ai-message .message-bubble {
+    background: rgba(29, 35, 31, 0.88);
+    border-color: rgba(255, 255, 255, 0.08);
   }
 }
 </style>
