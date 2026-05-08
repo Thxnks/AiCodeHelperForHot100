@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  55,
+    "title":  "跳跃游戏",
+    "slug":  "jump-game",
+    "leetCodeUrl":  "https://leetcode.cn/problems/jump-game/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "greedy",
+                 "dynamic-programming"
+             ],
+    "pattern":  "贪心维护最远可达",
+    "summary":  "判断是否能够从数组起点跳到最后一个下标。",
+    "coreIdea":  "抓住 贪心维护最远可达 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

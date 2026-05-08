@@ -73,6 +73,20 @@ export async function fetchHot100WrongBook() {
   return asArray(unwrapBusinessResponse(response.data, 'Wrong book query failed'))
 }
 
+export async function fetchHot100WrongBookAnalysis() {
+  const response = await apiClient.get('/hot100/wrong-book/analysis', {
+    timeout: 8000
+  })
+  return asArray(unwrapBusinessResponse(response.data, 'Wrong book analysis query failed'))
+}
+
+export async function analyzeHot100WrongAnswer(payload) {
+  const response = await apiClient.post('/hot100/wrong-book/analyze', payload, {
+    timeout: 30000
+  })
+  return unwrapBusinessResponse(response.data, 'Wrong answer analysis failed')
+}
+
 export async function fetchHot100Recommendations(limit = 5) {
   try {
     const submitResponse = await apiClient.post(
@@ -93,6 +107,15 @@ export async function fetchHot100Recommendations(limit = 5) {
     })
     return asArray(unwrapBusinessResponse(response.data, 'Recommendation query failed'))
   }
+}
+
+export async function fetchHot100AiRecommendations(limit = 5) {
+  const response = await apiClient.get('/hot100/ai-recommendations', {
+    params: { limit },
+    timeout: 8000
+  })
+  const data = unwrapBusinessResponse(response.data, 'AI recommendation query failed')
+  return data || null
 }
 
 export async function fetchHot100StudyPlan(days = 7) {

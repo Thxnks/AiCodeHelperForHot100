@@ -1,0 +1,18 @@
+﻿{
+    "problemId":  96,
+    "title":  "不同的二叉搜索树",
+    "slug":  "unique-binary-search-trees",
+    "leetCodeUrl":  "https://leetcode.cn/problems/unique-binary-search-trees/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "math",
+                 "dynamic-programming",
+                 "tree",
+                 "binary-search-tree"
+             ],
+    "pattern":  "卡特兰数动态规划",
+    "summary":  "计算由 1 到 n 构成的不同二叉搜索树数量。",
+    "coreIdea":  "抓住 卡特兰数动态规划 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  4,
+    "title":  "寻找两个正序数组的中位数",
+    "slug":  "median-of-two-sorted-arrays",
+    "leetCodeUrl":  "https://leetcode.cn/problems/median-of-two-sorted-arrays/",
+    "difficulty":  "hard",
+    "tags":  [
+                 "array",
+                 "binary-search",
+                 "divide-and-conquer"
+             ],
+    "pattern":  "二分划分",
+    "summary":  "在两个正序数组中找到整体中位数，要求时间复杂度达到 O(log(m+n))。",
+    "coreIdea":  "抓住 二分划分 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

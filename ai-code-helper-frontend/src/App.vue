@@ -57,7 +57,6 @@
         <header class="panel-header">
           <div class="chat-header-main">
             <div class="title-wrap">
-              <div class="eyebrow">AI Coding Coach</div>
               <h1>AI Code Helper</h1>
               <p>Practice Hot100 problems with an AI coach.</p>
             </div>
@@ -65,7 +64,6 @@
               <template v-if="currentUser">
                 <div class="auth-user">
                   <strong>{{ currentUser.username }}</strong>
-                  <span>{{ currentUser.email }}</span>
                 </div>
                 <button type="button" class="auth-btn ghost" @click="logout">Sign out</button>
               </template>
@@ -228,6 +226,19 @@
             <strong>推荐下一题：</strong>
             <span v-for="item in recommendations.slice(0, 3)" :key="item.slug">{{ item.title }}</span>
           </div>
+          <div class="insight-box ai-recommend-box" v-if="aiRecommendations">
+            <strong>AI 教练总结：</strong>
+            <p>{{ aiRecommendations.coachSummary }}</p>
+            <button
+              v-for="item in (aiRecommendations.recommendedProblems || []).slice(0, 2)"
+              :key="`ai-rec-${item.slug}`"
+              type="button"
+              class="inline-problem-btn"
+              @click="selectProblem(item.slug)"
+            >
+              {{ item.title }}：{{ item.trainingFocus }}
+            </button>
+          </div>
           <button
             v-if="tagMastery.length > 0"
             type="button"
@@ -292,6 +303,14 @@
                 </div>
                 <div class="problem-tags">
                   <span v-for="tag in problem.tags" :key="`wrong-${problem.slug}-${tag}`">{{ tag }}</span>
+                </div>
+                <div class="wrong-analysis-preview" v-if="findWrongAnalysis(problem.slug)">
+                  <p v-if="findWrongAnalysis(problem.slug).wrongReason">
+                    <strong>错因：</strong>{{ findWrongAnalysis(problem.slug).wrongReason }}
+                  </p>
+                  <p v-if="findWrongAnalysis(problem.slug).nextAction">
+                    <strong>下一步：</strong>{{ findWrongAnalysis(problem.slug).nextAction }}
+                  </p>
                 </div>
               </div>
               <div v-if="!isHot100Loading && wrongBook.length === 0" class="empty-list">
@@ -363,6 +382,28 @@
                 <label>学习备注</label>
                 <textarea v-model="progressForm.notes" placeholder="记录关键错误点或复盘结论"></textarea>
               </div>
+              <div class="progress-row">
+                <label>错误代码</label>
+                <textarea v-model="wrongAnalysisForm.userCode" placeholder="粘贴错误代码，AI 会结合题目上下文分析错因"></textarea>
+              </div>
+              <div class="progress-row">
+                <label>错误描述</label>
+                <textarea v-model="wrongAnalysisForm.errorDescription" placeholder="描述报错、卡住的点或错误样例"></textarea>
+              </div>
+              <button
+                @click="analyzeWrongAnswerWithAi"
+                class="coach-btn"
+                type="button"
+                :disabled="isAnalyzingWrongAnswer"
+              >
+                {{ isAnalyzingWrongAnswer ? 'AI 分析中...' : 'AI 分析错因' }}
+              </button>
+              <div class="wrong-analysis-result" v-if="progressForm.wrongReason || progressForm.knowledgePoint || progressForm.aiFeedback || progressForm.nextAction">
+                <p v-if="progressForm.wrongReason"><strong>错因：</strong>{{ progressForm.wrongReason }}</p>
+                <p v-if="progressForm.knowledgePoint"><strong>知识点：</strong>{{ progressForm.knowledgePoint }}</p>
+                <p v-if="progressForm.aiFeedback"><strong>AI 建议：</strong>{{ progressForm.aiFeedback }}</p>
+                <p v-if="progressForm.nextAction"><strong>下一步：</strong>{{ progressForm.nextAction }}</p>
+              </div>
               <button @click="saveProgress" class="save-btn" type="button" :disabled="isSavingProgress">
                 {{ isSavingProgress ? '保存中...' : '保存进度' }}
               </button>
@@ -431,6 +472,8 @@ import {
   setStoredAccessToken
 } from './api/httpClient.js'
 import {
+  analyzeHot100WrongAnswer,
+  fetchHot100AiRecommendations,
   fetchHot100DatasetStats,
   fetchHot100ProblemDetail,
   fetchHot100Problems,
@@ -441,6 +484,7 @@ import {
   fetchHot100Tags,
   fetchHot100WeakTags,
   fetchHot100WrongBook,
+  fetchHot100WrongBookAnalysis,
   upsertHot100Progress
 } from './api/hot100Api.js'
 import { fetchErrorCodeDictionary } from './api/metaApi.js'
@@ -487,17 +531,28 @@ export default {
       selectedProblem: null,
       progressMap: {},
       wrongBook: [],
+      wrongBookAnalysis: [],
       studyPlan: [],
       studyPlanDays: 7,
       weakTags: [],
       recommendations: [],
+      aiRecommendations: null,
       tagMastery: [],
       datasetStats: null,
       showMasteryPanel: false,
       progressForm: {
         status: 'NOT_STARTED',
-        notes: ''
+        notes: '',
+        wrongReason: '',
+        knowledgePoint: '',
+        aiFeedback: '',
+        nextAction: ''
       },
+      wrongAnalysisForm: {
+        userCode: '',
+        errorDescription: ''
+      },
+      isAnalyzingWrongAnswer: false,
       isSavingProgress: false,
       progressSaveState: '',
       progressSaveMessage: '',
@@ -678,9 +733,11 @@ export default {
       this.currentUser = null
       this.progressMap = {}
       this.wrongBook = []
+      this.wrongBookAnalysis = []
       this.studyPlan = []
       this.weakTags = []
       this.recommendations = []
+      this.aiRecommendations = null
       this.tagMastery = []
       this.datasetStats = null
       if (this.selectedProblem?.slug) {
@@ -792,7 +849,8 @@ export default {
       }
       this.isHot100Loading = true
       try {
-        this.wrongBook = await fetchHot100WrongBook()
+        this.wrongBookAnalysis = await fetchHot100WrongBookAnalysis()
+        this.wrongBook = this.wrongBookAnalysis.map((item) => item.problem).filter(Boolean)
         this.selectedProblem = null
         this.hot100View = 'wrongBook'
       } catch (error) {
@@ -836,6 +894,15 @@ export default {
       const progress = this.progressMap[slug]
       this.progressForm.status = progress?.status || 'NOT_STARTED'
       this.progressForm.notes = progress?.notes || ''
+      this.progressForm.wrongReason = progress?.wrongReason || ''
+      this.progressForm.knowledgePoint = progress?.knowledgePoint || ''
+      this.progressForm.aiFeedback = progress?.aiFeedback || ''
+      this.progressForm.nextAction = progress?.nextAction || ''
+      this.wrongAnalysisForm.userCode = ''
+      this.wrongAnalysisForm.errorDescription = ''
+    },
+    findWrongAnalysis(slug) {
+      return this.wrongBookAnalysis.find((item) => item.problem?.slug === slug) || null
     },
     statusText(status) {
       switch ((status || '').toUpperCase()) {
@@ -882,7 +949,11 @@ export default {
         const saved = await upsertHot100Progress({
           problemSlug: this.selectedProblem.slug,
           status: this.progressForm.status,
-          notes: this.progressForm.notes
+          notes: this.progressForm.notes,
+          wrongReason: this.progressForm.wrongReason,
+          knowledgePoint: this.progressForm.knowledgePoint,
+          aiFeedback: this.progressForm.aiFeedback,
+          nextAction: this.progressForm.nextAction
         })
         if (saved?.problemSlug) {
           this.progressMap[saved.problemSlug] = saved
@@ -901,13 +972,65 @@ export default {
         this.isSavingProgress = false
       }
     },
+    async analyzeWrongAnswerWithAi() {
+      if (!this.selectedProblem) return
+      if (!this.currentUser) {
+        this.progressSaveState = 'error'
+        this.progressSaveMessage = '请先登录后再使用 AI 错因分析'
+        this.openAuthModal('login')
+        return
+      }
+      if (!this.wrongAnalysisForm.userCode.trim() && !this.wrongAnalysisForm.errorDescription.trim() && !this.progressForm.notes.trim()) {
+        this.progressSaveState = 'error'
+        this.progressSaveMessage = '请先填写错误代码、错误描述或学习备注'
+        return
+      }
+      this.isAnalyzingWrongAnswer = true
+      this.progressSaveState = ''
+      this.progressSaveMessage = ''
+      try {
+        const analysis = await analyzeHot100WrongAnswer({
+          problemSlug: this.selectedProblem.slug,
+          userCode: this.wrongAnalysisForm.userCode,
+          errorDescription: this.wrongAnalysisForm.errorDescription,
+          notes: this.progressForm.notes
+        })
+        this.progressForm.status = 'WRONG'
+        this.progressForm.wrongReason = analysis?.wrongReason || ''
+        this.progressForm.knowledgePoint = analysis?.knowledgePoint || ''
+        this.progressForm.aiFeedback = analysis?.aiFeedback || ''
+        this.progressForm.nextAction = analysis?.nextAction || ''
+        this.progressMap[this.selectedProblem.slug] = {
+          ...(this.progressMap[this.selectedProblem.slug] || {}),
+          problemSlug: this.selectedProblem.slug,
+          status: 'WRONG',
+          notes: this.progressForm.notes,
+          wrongReason: this.progressForm.wrongReason,
+          knowledgePoint: this.progressForm.knowledgePoint,
+          aiFeedback: this.progressForm.aiFeedback,
+          nextAction: this.progressForm.nextAction,
+          updatedAt: new Date().toISOString()
+        }
+        this.progressSaveState = 'success'
+        this.progressSaveMessage = 'AI 错因分析已生成并保存到错题本'
+        await this.loadLearningInsights()
+      } catch (error) {
+        console.error('Failed to analyze wrong answer:', error)
+        this.progressSaveState = 'error'
+        this.progressSaveMessage = error?.response?.data?.message || error?.message || 'AI 错因分析失败'
+      } finally {
+        this.isAnalyzingWrongAnswer = false
+      }
+    },
     async loadLearningInsights() {
       if (!this.currentUser) {
         this.progressMap = {}
         this.wrongBook = []
+        this.wrongBookAnalysis = []
         this.studyPlan = []
         this.weakTags = []
         this.recommendations = []
+        this.aiRecommendations = null
         this.tagMastery = []
         this.datasetStats = null
         if (this.selectedProblem?.slug) {
@@ -922,17 +1045,22 @@ export default {
           this.progressMap[item.problemSlug] = item
         }
 
-        const [wrongBookResult, weakTagsResult, recommendationsResult, tagMasteryResult, datasetStatsResult] = await Promise.allSettled([
+        const [wrongBookResult, wrongBookAnalysisResult, weakTagsResult, recommendationsResult, aiRecommendationsResult, tagMasteryResult, datasetStatsResult] = await Promise.allSettled([
           fetchHot100WrongBook(),
+          fetchHot100WrongBookAnalysis(),
           fetchHot100WeakTags(),
           fetchHot100Recommendations(5),
+          fetchHot100AiRecommendations(5),
           fetchHot100TagMastery(),
           fetchHot100DatasetStats()
         ])
 
         this.wrongBook = wrongBookResult.status === 'fulfilled' ? wrongBookResult.value : []
+        this.wrongBookAnalysis = wrongBookAnalysisResult.status === 'fulfilled' ? wrongBookAnalysisResult.value : []
         this.weakTags = weakTagsResult.status === 'fulfilled' ? weakTagsResult.value : []
-        this.recommendations = recommendationsResult.status === 'fulfilled' ? recommendationsResult.value : []
+        this.aiRecommendations = aiRecommendationsResult.status === 'fulfilled' ? aiRecommendationsResult.value : null
+        this.recommendations = this.aiRecommendations?.recommendedProblems
+          || (recommendationsResult.status === 'fulfilled' ? recommendationsResult.value : [])
         this.tagMastery = tagMasteryResult.status === 'fulfilled' ? tagMasteryResult.value : []
         this.datasetStats = datasetStatsResult.status === 'fulfilled' ? datasetStatsResult.value : null
 
@@ -3747,6 +3875,42 @@ button:disabled {
   gap: 5px;
 }
 
+.ai-recommend-box,
+.wrong-analysis-preview,
+.wrong-analysis-result {
+  display: grid;
+  gap: 6px;
+}
+
+.ai-recommend-box p,
+.wrong-analysis-preview p,
+.wrong-analysis-result p {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.inline-problem-btn {
+  width: 100%;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: #fafafa;
+  color: var(--app-text);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.wrong-analysis-preview,
+.wrong-analysis-result {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: #fbfbfa;
+}
+
 .auth-tip,
 .insight-box,
 .progress-editor,
@@ -4191,6 +4355,16 @@ button:disabled {
   font-family: var(--font-claude-display);
   font-size: 34px;
   line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.chat-panel h1,
+.chat-panel h2,
+.hot100-panel h2,
+.hot100-panel h3,
+.welcome-card h2 {
+  font-family: var(--font-claude-display);
   font-weight: 650;
   letter-spacing: -0.01em;
 }
@@ -4212,11 +4386,15 @@ button:disabled {
 
 .user-actions .auth-user {
   height: 40px;
-  max-width: 240px;
+  min-width: 84px;
+  max-width: 180px;
   padding: 0 12px;
   border: 1px solid #e5e7eb;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.2s ease;
 }
 
@@ -4226,8 +4404,15 @@ button:disabled {
 }
 
 .user-actions .auth-user strong {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
   font-size: 13px;
   font-weight: 650;
+  line-height: 40px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-actions .auth-user span {
@@ -4246,6 +4431,7 @@ button:disabled {
   width: fit-content;
   max-width: 100%;
   min-height: 58px;
+  justify-content: flex-start;
   padding: 9px 10px;
   border: 1px solid #e5e7eb;
   border-radius: 18px;
@@ -4277,6 +4463,7 @@ button:disabled {
 .chat-panel .role-picker {
   flex: 0 0 auto;
   min-width: 0;
+  justify-content: flex-start;
   gap: 8px;
 }
 
@@ -4371,6 +4558,7 @@ button:disabled {
 
   .chat-panel .role-picker {
     flex-wrap: wrap;
+    justify-content: flex-start;
   }
 }
 
@@ -4399,5 +4587,18 @@ button:disabled {
   .chat-panel .select-field {
     width: 100%;
   }
+}
+
+/* Keep Role / Coaching Mode controls left-aligned after wrapping */
+.chat-panel .session-context-bar .role-picker {
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  text-align: left;
+}
+
+.chat-panel .session-context-bar .select-field {
+  margin-left: 0 !important;
+  margin-right: auto !important;
+  justify-self: start;
 }
 </style>

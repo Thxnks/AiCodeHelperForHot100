@@ -1,0 +1,21 @@
+﻿{
+    "problemId":  399,
+    "title":  "除法求值",
+    "slug":  "evaluate-division",
+    "leetCodeUrl":  "https://leetcode.cn/problems/evaluate-division/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "string",
+                 "depth-first-search",
+                 "breadth-first-search",
+                 "union-find",
+                 "graph",
+                 "shortest-path"
+             ],
+    "pattern":  "带权图搜索",
+    "summary":  "根据变量除法关系，回答查询结果。",
+    "coreIdea":  "抓住 带权图搜索 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

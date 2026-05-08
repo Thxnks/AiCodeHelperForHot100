@@ -1,0 +1,18 @@
+﻿{
+    "problemId":  538,
+    "title":  "把二叉搜索树转换为累加树",
+    "slug":  "convert-bst-to-greater-tree",
+    "leetCodeUrl":  "https://leetcode.cn/problems/convert-bst-to-greater-tree/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "tree",
+                 "depth-first-search",
+                 "binary-search-tree",
+                 "binary-tree"
+             ],
+    "pattern":  "反向中序累加",
+    "summary":  "将 BST 转换为每个节点包含大于等于它的所有节点值之和。",
+    "coreIdea":  "抓住 反向中序累加 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

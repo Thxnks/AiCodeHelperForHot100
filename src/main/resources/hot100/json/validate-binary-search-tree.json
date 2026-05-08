@@ -1,0 +1,18 @@
+﻿{
+    "problemId":  98,
+    "title":  "验证二叉搜索树",
+    "slug":  "validate-binary-search-tree",
+    "leetCodeUrl":  "https://leetcode.cn/problems/validate-binary-search-tree/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "tree",
+                 "depth-first-search",
+                 "binary-search-tree",
+                 "binary-tree"
+             ],
+    "pattern":  "递归上下界",
+    "summary":  "判断一棵二叉树是否是有效的二叉搜索树。",
+    "coreIdea":  "抓住 递归上下界 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

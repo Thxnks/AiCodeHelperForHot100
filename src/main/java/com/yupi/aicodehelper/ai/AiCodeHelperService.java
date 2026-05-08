@@ -26,6 +26,12 @@ public interface AiCodeHelperService {
     @SystemMessage(fromResource = "system-prompt.txt")
     Result<String> chatWithRag(String userMessage);
 
+    @SystemMessage(fromResource = "hot100-wrong-analysis-prompt.txt")
+    String analyzeHot100WrongAnswer(String userMessage);
+
+    @SystemMessage(fromResource = "hot100-wrong-analysis-json-repair-prompt.txt")
+    String repairHot100WrongAnalysisJson(String userMessage);
+
     @SystemMessage(fromResource = "system-prompt-role.txt")
     Flux<String> chatStream(@MemoryId int memoryId,
                             @UserMessage String userMessage,
@@ -33,5 +39,6 @@ public interface AiCodeHelperService {
                             @V("coachingStrategy") String coachingStrategy,
                             @V("solvingModeStrategy") String solvingModeStrategy,
                             @V("problemContext") String problemContext,
+                            @V("userLearningProfile") String userLearningProfile,
                             @V("bigModelCapabilityNotice") String bigModelCapabilityNotice);
 }

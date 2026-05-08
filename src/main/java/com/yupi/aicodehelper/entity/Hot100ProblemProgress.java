@@ -37,6 +37,18 @@ public class Hot100ProblemProgress {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    @Column(name = "wrong_reason", columnDefinition = "TEXT")
+    private String wrongReason;
+
+    @Column(name = "knowledge_point", length = 255)
+    private String knowledgePoint;
+
+    @Column(name = "ai_feedback", columnDefinition = "TEXT")
+    private String aiFeedback;
+
+    @Column(name = "next_action", columnDefinition = "TEXT")
+    private String nextAction;
+
     @Column(name = "last_reviewed_at")
     private LocalDateTime lastReviewedAt;
 

@@ -2,143 +2,136 @@
 
 [中文文档](./README.zh-CN.md)
 
-A full-stack project built with `Spring Boot 3 + Vue 3 + LangChain4j`, focused on an AI coding assistant and Hot100 training workflow that is runnable and extensible.
+An AI-powered algorithm practice coach built with `Spring Boot 3`, `Vue 3`, and `LangChain4j`. The project focuses on LeetCode Hot100 practice, user learning profiles, wrong-answer diagnosis, personalized recommendations, and streaming AI tutoring.
 
-## Core Features
+## Highlights
 
-- AI chat and coding assistance (LangChain4j + DashScope)
-- User authentication (register / login / refresh token)
-- Conversation and message persistence
-- Hot100 dataset, progress tracking, and learning analytics APIs
-- Redis cache, RabbitMQ async processing, Flyway DB migrations
-- One-command Docker Compose deployment for the full stack
+- Hot100 dataset with 100 Chinese LeetCode-style problems loaded from JSON and Markdown resources.
+- User progress tracking with statuses such as not started, completed, wrong, and mastered.
+- Tag mastery analytics based on practiced count, mastered count, wrong count, and mastery rate.
+- Hybrid recommendation flow: rule-based candidate recall plus AI coach-style explanation.
+- AI wrong-answer analysis with structured JSON output, repair retry, fallback degradation, persistence, and call logging.
+- AI chat enriched with current problem context and user learning profile.
+- Production-style backend stack: Spring Security, JWT, JPA, Flyway, Redis cache, async task support, Docker Compose.
 
 ## Tech Stack
 
-- Backend: `Java 21`, `Spring Boot 3.5.3`, `Spring Security`, `Spring Data JPA`, `Flyway`, `Redis`, `RabbitMQ`
-- AI: `LangChain4j 1.1.0` + `DashScope`
-- Frontend: `Vue 3`
-- Database: `MySQL 8.0`
+- Backend: `Java 21`, `Spring Boot 3.5`, `Spring Security`, `Spring Data JPA`, `Flyway`
+- AI: `LangChain4j`, `DashScope/Qwen`
+- Frontend: `Vue 3`, `Vite`, `Axios`, `SSE`
+- Storage and middleware: `MySQL 8`, `Redis`, `RabbitMQ`
 - Deployment: `Docker`, `Docker Compose`
 
-## Quick Start (Recommended: Docker)
+## Architecture
 
-### 1) Prepare environment files
-
-```bash
-cp .env.example .env
-cp ai-code-helper-frontend/.env.example ai-code-helper-frontend/.env
+```text
+Vue Frontend
+  |
+  | REST / SSE
+  v
+Spring Boot API
+  |
+  +-- AuthService
+  +-- Hot100ProblemLoader
+  +-- Hot100ProgressService
+  +-- Hot100WrongAnalysisService
+  +-- AiCodeHelperService
+  |
+  +-- MySQL
+  +-- Redis
+  +-- RabbitMQ
 ```
 
-For Windows PowerShell:
+## Core AI Flow
+
+Wrong-answer analysis is not implemented as a plain controller-to-model call.
+
+```text
+user code / error description
+  -> problem context enrichment
+  -> LLM structured JSON generation
+  -> backend JSON parsing and validation
+  -> one repair retry if parsing fails
+  -> conservative fallback if the model is unavailable
+  -> persist analysis into progress records
+  -> write ai_call_log for latency, success, repair, fallback, and error tracking
+```
+
+## Main APIs
+
+- `GET /api/hot100/problems`
+- `GET /api/hot100/problems/{slug}`
+- `POST /api/hot100/progress`
+- `GET /api/hot100/tag-mastery`
+- `GET /api/hot100/wrong-book/analysis`
+- `POST /api/hot100/wrong-book/analyze`
+- `GET /api/hot100/ai-recommendations`
+- `GET /api/ai/chat`
+
+## Quick Start
 
 ```powershell
 Copy-Item .env.example .env
 Copy-Item ai-code-helper-frontend/.env.example ai-code-helper-frontend/.env
 ```
 
-Minimum required values in `.env`:
+Configure at least:
 
 - `DASHSCOPE_API_KEY`
-- `APP_AUTH_JWT_SECRET` (use a strong random string with at least 32 characters)
+- `APP_AUTH_JWT_SECRET`
+- MySQL / Redis / RabbitMQ connection settings
 
-### 2) Start all services
+Start with Docker:
 
 ```bash
 docker compose up -d --build
 ```
 
-### 3) Access endpoints
-
-- Frontend: `http://localhost:3001`
-- Backend Health: `http://localhost:8081/api/health`
-- Swagger UI: `http://localhost:8081/api/swagger-ui.html`
-- RabbitMQ Console: `http://localhost:15672` (default `guest/guest`)
-
-## Local Development (Without Docker)
-
-### Backend
-
-```bash
-./mvnw spring-boot:run
-```
-
-Windows:
+Local backend:
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-### Frontend
+Local frontend:
 
-```bash
+```powershell
 cd ai-code-helper-frontend
 npm install
 npm run dev
 ```
 
-## Useful Commands
+## Verification
 
-```bash
-# View logs
-docker compose logs -f backend
-docker compose logs -f frontend
+```powershell
+.\mvnw.cmd test
 
-# Restart backend only
-docker compose restart backend
-
-# Stop all containers
-docker compose down
-
-# Stop and remove data volumes (MySQL/Redis/RabbitMQ)
-docker compose down -v
+cd ai-code-helper-frontend
+npm run build
 ```
-
-## Environment Variables
-
-See `.env.example` for full backend variables:
-
-- AI: `DASHSCOPE_API_KEY`, `BIGMODEL_API_KEY`
-- MySQL: `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USERNAME`, `MYSQL_PASSWORD`
-- Redis: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DATABASE`
-- RabbitMQ: `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD`, `RABBITMQ_VHOST`
-- Auth: `APP_AUTH_JWT_SECRET`, `APP_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS`, `APP_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS`
-- Cache: `APP_CACHE_REDIS_ENABLED` and `APP_CACHE_*_TTL_SECONDS`
-
-Frontend variables are in `ai-code-helper-frontend/.env.example`:
-
-- `VITE_API_BASE_URL`
-
-## Main API Entry Points
-
-- `/api/health` health check
-- `/api/swagger-ui.html` API docs
-- Controller source path: `src/main/java/com/yupi/aicodehelper/controller`
 
 ## Project Structure
 
 ```text
 .
-|-- ai-code-helper-frontend/      # Frontend app
-|-- src/main/java/                # Backend source code
+|-- ai-code-helper-frontend/
+|-- src/main/java/
+|   |-- controller/
+|   |-- hot100/
+|   |-- ai/
+|   |-- auth/
+|   |-- entity/
+|   `-- repository/
 |-- src/main/resources/
-|   |-- db/migration/             # Flyway SQL migrations
-|   |-- hot100/                   # Hot100 dataset files
-|   `-- roles/                    # Role configs
+|   |-- db/migration/
+|   |-- hot100/json/
+|   |-- hot100/markdown/
+|   `-- *.txt
+|-- docs/
 |-- docker-compose.yml
-|-- Dockerfile
-`-- docs/                         # Design and delivery documents
+`-- README.md
 ```
-
-## Additional Docs
-
-- [Docker Delivery Guide](docs/week4-delivery.md)
-- [Database Engineering](docs/week2-db-engineering.md)
-- [Migration Cutover Runbook](docs/week2-migration-cutover-runbook.md)
-- [Async Task Design](docs/week3-async-tasks.md)
-- [Cache Consistency](docs/week3-cache-consistency.md)
-- [API Contract Examples](docs/api-contract-examples.md)
 
 ## Notes
 
-Local sensitive/runtime files are ignored by `.gitignore` (for example `.env` and `data/`). Do not commit real API keys or secrets.
+Do not commit real API keys, database passwords, or production secrets. Local runtime files such as `.env` and data directories are ignored by `.gitignore`.

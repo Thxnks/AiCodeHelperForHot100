@@ -1,0 +1,16 @@
+﻿{
+    "problemId":  56,
+    "title":  "合并区间",
+    "slug":  "merge-intervals",
+    "leetCodeUrl":  "https://leetcode.cn/problems/merge-intervals/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "sorting"
+             ],
+    "pattern":  "排序后合并",
+    "summary":  "合并所有重叠区间，并返回不重叠区间数组。",
+    "coreIdea":  "抓住 排序后合并 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

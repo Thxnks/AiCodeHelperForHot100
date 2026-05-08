@@ -1,0 +1,16 @@
+﻿{
+    "problemId":  48,
+    "title":  "旋转图像",
+    "slug":  "rotate-image",
+    "leetCodeUrl":  "https://leetcode.cn/problems/rotate-image/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "matrix"
+             ],
+    "pattern":  "矩阵原地变换",
+    "summary":  "将 n x n 矩阵顺时针旋转 90 度，要求原地修改。",
+    "coreIdea":  "抓住 矩阵原地变换 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

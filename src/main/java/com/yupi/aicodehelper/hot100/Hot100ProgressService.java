@@ -61,6 +61,10 @@ public class Hot100ProgressService {
         entity.setProblemSlug(request.problemSlug());
         entity.setStatus(status.name());
         entity.setNotes(request.notes());
+        entity.setWrongReason(request.wrongReason());
+        entity.setKnowledgePoint(request.knowledgePoint());
+        entity.setAiFeedback(request.aiFeedback());
+        entity.setNextAction(request.nextAction());
         entity.setLastReviewedAt(LocalDateTime.now());
         Hot100ProblemProgress saved = progressRepository.save(entity);
         return Hot100ProgressView.from(saved);
@@ -80,6 +84,27 @@ public class Hot100ProgressService {
             Hot100ProblemSummaryView summary = findSummaryBySlug(p.getProblemSlug());
             if (summary != null) {
                 result.add(summary);
+            }
+        }
+        return result;
+    }
+
+    public List<Hot100WrongBookItemView> wrongBookAnalysis(Long userId) {
+        List<Hot100ProblemProgress> wrong = progressRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(
+                userId, Hot100ProgressStatus.WRONG.name());
+        List<Hot100WrongBookItemView> result = new ArrayList<>();
+        for (Hot100ProblemProgress p : wrong) {
+            Hot100ProblemSummaryView summary = findSummaryBySlug(p.getProblemSlug());
+            if (summary != null) {
+                result.add(new Hot100WrongBookItemView(
+                        summary,
+                        p.getWrongReason(),
+                        p.getKnowledgePoint(),
+                        p.getAiFeedback(),
+                        p.getNextAction(),
+                        p.getNotes(),
+                        p.getUpdatedAt()
+                ));
             }
         }
         return result;
@@ -138,6 +163,45 @@ public class Hot100ProgressService {
             }
         }
         return recommendations;
+    }
+
+    public Hot100AiRecommendationsView aiRecommendations(int limit, Long userId) {
+        int realLimit = Math.max(1, Math.min(limit, 20));
+        List<Hot100TagMasteryView> mastery = tagMastery(userId);
+        List<String> weakTagNames = pickWeakTags(mastery);
+        List<String> masteredTagNames = mastery.stream()
+                .filter(tag -> tag.practicedCount() > 0)
+                .filter(tag -> tag.masteryRate() >= 0.8D && tag.wrongCount() == 0)
+                .sorted(Comparator.comparingDouble(Hot100TagMasteryView::masteryRate).reversed())
+                .limit(5)
+                .map(Hot100TagMasteryView::tag)
+                .toList();
+
+        List<Hot100WrongBookItemView> wrongItems = wrongBookAnalysis(userId);
+        List<String> recentWrongProblems = wrongItems.stream()
+                .limit(5)
+                .map(item -> item.problem().slug())
+                .toList();
+
+        List<Hot100ProblemSummaryView> candidates = recommendNext(realLimit, userId);
+        List<Hot100RecommendedProblemView> recommendedProblems = candidates.stream()
+                .map(problem -> Hot100RecommendedProblemView.from(
+                        problem,
+                        buildRecommendationReason(problem, weakTagNames, wrongItems),
+                        buildTrainingFocus(problem, weakTagNames)
+                ))
+                .toList();
+
+        String coachSummary = buildCoachSummary(weakTagNames, masteredTagNames, recentWrongProblems);
+        List<Hot100StudyPlanItemView> trainingPlan = buildStudyPlan(Math.min(Math.max(realLimit, 7), 14), userId);
+        return new Hot100AiRecommendationsView(
+                weakTagNames,
+                masteredTagNames,
+                recentWrongProblems,
+                coachSummary,
+                recommendedProblems,
+                trainingPlan
+        );
     }
 
     @Cacheable(cacheNames = Hot100CacheNames.STUDY_PLAN, key = "#userId + '|' + #days")
@@ -238,4 +302,100 @@ public class Hot100ProgressService {
         Hot100Problem problem = hot100ProblemLoader.getBySlug(slug);
         return problem == null ? null : Hot100ProblemSummaryView.from(problem);
     }
+
+    private List<String> pickWeakTags(List<Hot100TagMasteryView> mastery) {
+        List<String> weak = mastery.stream()
+                .filter(tag -> tag.practicedCount() > 0 || tag.wrongCount() > 0)
+                .filter(tag -> tag.wrongCount() > 0 || tag.masteryRate() < 0.6D)
+                .sorted(Comparator
+                        .comparingInt(Hot100TagMasteryView::wrongCount).reversed()
+                        .thenComparingDouble(Hot100TagMasteryView::masteryRate)
+                        .thenComparing(Hot100TagMasteryView::tag))
+                .limit(5)
+                .map(Hot100TagMasteryView::tag)
+                .toList();
+        if (!weak.isEmpty()) {
+            return weak;
+        }
+        return mastery.stream()
+                .filter(tag -> tag.practicedCount() > 0)
+                .sorted(Comparator.comparingDouble(Hot100TagMasteryView::masteryRate)
+                        .thenComparing(Hot100TagMasteryView::tag))
+                .limit(3)
+                .map(Hot100TagMasteryView::tag)
+                .toList();
+    }
+
+    private String buildRecommendationReason(Hot100ProblemSummaryView problem,
+                                             List<String> weakTags,
+                                             List<Hot100WrongBookItemView> wrongItems) {
+        String matchedWeakTag = firstMatchedTag(problem.tags(), weakTags);
+        if (matchedWeakTag != null) {
+            return "This problem targets your current weak tag: " + matchedWeakTag
+                    + ". It is suitable for reinforcing " + readablePattern(problem) + ".";
+        }
+        String relatedWrongPoint = wrongItems.stream()
+                .map(Hot100WrongBookItemView::knowledgePoint)
+                .filter(point -> point != null && !point.isBlank())
+                .findFirst()
+                .orElse(null);
+        if (relatedWrongPoint != null) {
+            return "This problem is recommended after your recent wrong answers. It can help revisit: "
+                    + relatedWrongPoint + ".";
+        }
+        return "This problem fills the next unmastered slot in the Hot100 path and keeps your practice balanced.";
+    }
+
+    private String buildTrainingFocus(Hot100ProblemSummaryView problem, List<String> weakTags) {
+        String matchedWeakTag = firstMatchedTag(problem.tags(), weakTags);
+        if (matchedWeakTag != null) {
+            return "Focus on the key decisions behind " + matchedWeakTag
+                    + ", then summarize the reusable pattern after solving.";
+        }
+        String difficulty = problem.difficulty() == null ? "" : problem.difficulty().toLowerCase();
+        return switch (difficulty) {
+            case "easy" -> "Use this as speed training. Keep the implementation clean and test edge cases.";
+            case "hard" -> "Break the problem into states, invariants, and edge cases before coding.";
+            default -> "Practice pattern transfer and explain the approach in interview language.";
+        };
+    }
+
+    private String buildCoachSummary(List<String> weakTags,
+                                     List<String> masteredTags,
+                                     List<String> recentWrongProblems) {
+        if (weakTags.isEmpty() && recentWrongProblems.isEmpty()) {
+            return "Not enough practice data yet. Start with foundational Hot100 problems and mark progress after each attempt.";
+        }
+        String weakPart = weakTags.isEmpty()
+                ? "no stable weak tag has emerged"
+                : "your main weak tags are " + String.join(", ", weakTags);
+        String masteredPart = masteredTags.isEmpty()
+                ? "no tag is stable enough to mark as mastered yet"
+                : "you are relatively stable on " + String.join(", ", masteredTags);
+        return "Based on your progress, " + weakPart + "; " + masteredPart
+                + ". The next practice should prioritize targeted repair over simply doing problems in order.";
+    }
+
+    private String firstMatchedTag(List<String> problemTags, List<String> targetTags) {
+        if (problemTags == null || targetTags == null || targetTags.isEmpty()) {
+            return null;
+        }
+        for (String tag : problemTags) {
+            if (targetTags.contains(tag)) {
+                return tag;
+            }
+        }
+        return null;
+    }
+
+    private String readablePattern(Hot100ProblemSummaryView problem) {
+        if (problem.pattern() != null && !problem.pattern().isBlank()) {
+            return problem.pattern();
+        }
+        if (problem.tags() != null && !problem.tags().isEmpty()) {
+            return String.join(", ", problem.tags());
+        }
+        return "the underlying algorithm pattern";
+    }
+
 }

@@ -9,6 +9,10 @@ public record Hot100ProgressView(
         String problemSlug,
         String status,
         String notes,
+        String wrongReason,
+        String knowledgePoint,
+        String aiFeedback,
+        String nextAction,
         LocalDateTime lastReviewedAt,
         LocalDateTime updatedAt
 ) {
@@ -18,6 +22,10 @@ public record Hot100ProgressView(
                 progress.getProblemSlug(),
                 progress.getStatus(),
                 progress.getNotes(),
+                progress.getWrongReason(),
+                progress.getKnowledgePoint(),
+                progress.getAiFeedback(),
+                progress.getNextAction(),
                 progress.getLastReviewedAt(),
                 progress.getUpdatedAt()
         );

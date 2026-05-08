@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  128,
+    "title":  "最长连续序列",
+    "slug":  "longest-consecutive-sequence",
+    "leetCodeUrl":  "https://leetcode.cn/problems/longest-consecutive-sequence/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "hash-table",
+                 "union-find"
+             ],
+    "pattern":  "哈希集合找序列起点",
+    "summary":  "找出未排序数组中最长连续序列的长度。",
+    "coreIdea":  "抓住 哈希集合找序列起点 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

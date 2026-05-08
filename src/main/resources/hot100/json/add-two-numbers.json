@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  2,
+    "title":  "两数相加",
+    "slug":  "add-two-numbers",
+    "leetCodeUrl":  "https://leetcode.cn/problems/add-two-numbers/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "linked-list",
+                 "math",
+                 "recursion"
+             ],
+    "pattern":  "链表模拟加法",
+    "summary":  "给你两个非空链表，表示两个非负整数。数字按逆序存储，请将两数相加并以相同形式返回。",
+    "coreIdea":  "抓住 链表模拟加法 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

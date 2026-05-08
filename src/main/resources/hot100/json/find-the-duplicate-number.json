@@ -1,0 +1,18 @@
+﻿{
+    "problemId":  287,
+    "title":  "寻找重复数",
+    "slug":  "find-the-duplicate-number",
+    "leetCodeUrl":  "https://leetcode.cn/problems/find-the-duplicate-number/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "two-pointers",
+                 "binary-search",
+                 "bit-manipulation"
+             ],
+    "pattern":  "值域环检测",
+    "summary":  "在包含 n+1 个整数的数组中找出重复的数。",
+    "coreIdea":  "抓住 值域环检测 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

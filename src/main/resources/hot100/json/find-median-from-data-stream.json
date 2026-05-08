@@ -1,0 +1,18 @@
+﻿{
+    "problemId":  295,
+    "title":  "数据流的中位数",
+    "slug":  "find-median-from-data-stream",
+    "leetCodeUrl":  "https://leetcode.cn/problems/find-median-from-data-stream/",
+    "difficulty":  "hard",
+    "tags":  [
+                 "design",
+                 "two-heaps",
+                 "data-stream",
+                 "heap"
+             ],
+    "pattern":  "双堆平衡",
+    "summary":  "设计数据结构，支持动态加入数字并返回当前中位数。",
+    "coreIdea":  "抓住 双堆平衡 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

@@ -174,6 +174,7 @@ public class AuthService {
         return user.getTokenVersion();
     }
 
+    //统一签发 token 并把 refresh token 哈希存库
     private AuthTokenResponse issueTokens(UserAccount user) {
         Long tokenVersion = normalizeTokenVersion(user);
         String role = isBlank(user.getRole()) ? "USER" : user.getRole().trim().toUpperCase();

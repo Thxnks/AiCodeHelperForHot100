@@ -9,6 +9,14 @@ public record Hot100ProgressUpsertRequest(
         @NotBlank(message = "status cannot be blank")
         String status,
         @Size(max = 4000, message = "notes is too long")
-        String notes
+        String notes,
+        @Size(max = 4000, message = "wrongReason is too long")
+        String wrongReason,
+        @Size(max = 255, message = "knowledgePoint is too long")
+        String knowledgePoint,
+        @Size(max = 4000, message = "aiFeedback is too long")
+        String aiFeedback,
+        @Size(max = 4000, message = "nextAction is too long")
+        String nextAction
 ) {
 }

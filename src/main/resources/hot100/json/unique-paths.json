@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  62,
+    "title":  "不同路径",
+    "slug":  "unique-paths",
+    "leetCodeUrl":  "https://leetcode.cn/problems/unique-paths/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "math",
+                 "dynamic-programming",
+                 "combinatorics"
+             ],
+    "pattern":  "网格动态规划",
+    "summary":  "机器人从左上角移动到右下角，计算不同路径数量。",
+    "coreIdea":  "抓住 网格动态规划 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

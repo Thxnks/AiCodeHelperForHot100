@@ -1,0 +1,16 @@
+﻿{
+    "problemId":  121,
+    "title":  "买卖股票的最佳时机",
+    "slug":  "best-time-to-buy-and-sell-stock",
+    "leetCodeUrl":  "https://leetcode.cn/problems/best-time-to-buy-and-sell-stock/",
+    "difficulty":  "easy",
+    "tags":  [
+                 "array",
+                 "dynamic-programming"
+             ],
+    "pattern":  "一次遍历维护最低价",
+    "summary":  "给定股票价格数组，求一次买卖能获得的最大利润。",
+    "coreIdea":  "抓住 一次遍历维护最低价 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

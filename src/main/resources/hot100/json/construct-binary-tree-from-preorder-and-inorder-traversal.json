@@ -1,0 +1,19 @@
+﻿{
+    "problemId":  105,
+    "title":  "从前序与中序遍历序列构造二叉树",
+    "slug":  "construct-binary-tree-from-preorder-and-inorder-traversal",
+    "leetCodeUrl":  "https://leetcode.cn/problems/construct-binary-tree-from-preorder-and-inorder-traversal/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "hash-table",
+                 "divide-and-conquer",
+                 "tree",
+                 "binary-tree"
+             ],
+    "pattern":  "递归建树",
+    "summary":  "根据前序和中序遍历结果构造二叉树。",
+    "coreIdea":  "抓住 递归建树 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

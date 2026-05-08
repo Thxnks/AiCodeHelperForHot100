@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  279,
+    "title":  "完全平方数",
+    "slug":  "perfect-squares",
+    "leetCodeUrl":  "https://leetcode.cn/problems/perfect-squares/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "math",
+                 "dynamic-programming",
+                 "breadth-first-search"
+             ],
+    "pattern":  "DP 或 BFS 最短路",
+    "summary":  "找出和为 n 的完全平方数的最少数量。",
+    "coreIdea":  "抓住 DP 或 BFS 最短路 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  53,
+    "title":  "最大子数组和",
+    "slug":  "maximum-subarray",
+    "leetCodeUrl":  "https://leetcode.cn/problems/maximum-subarray/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "dynamic-programming",
+                 "divide-and-conquer"
+             ],
+    "pattern":  "Kadane 动态规划",
+    "summary":  "找出一个具有最大和的连续子数组，并返回其最大和。",
+    "coreIdea":  "抓住 Kadane 动态规划 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

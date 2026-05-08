@@ -42,7 +42,7 @@ spring:
     baseline-version: 0
     locations: classpath:db/migration
 server:
-  port: 8081
+  port: ${SERVER_PORT:8082}
   servlet:
     context-path: /api
 springdoc:

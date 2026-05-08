@@ -7,8 +7,12 @@ public class Hot100ChatContextService {
 
     private final Hot100Service hot100Service;
 
-    public Hot100ChatContextService(Hot100Service hot100Service) {
+    private final Hot100ProgressService hot100ProgressService;
+
+    public Hot100ChatContextService(Hot100Service hot100Service,
+                                    Hot100ProgressService hot100ProgressService) {
         this.hot100Service = hot100Service;
+        this.hot100ProgressService = hot100ProgressService;
     }
 
     public String buildProblemContext(String currentProblemSlug) {
@@ -111,6 +115,34 @@ public class Hot100ChatContextService {
                 Current problem is "%s" (slug: %s).
                 Interpret short/ambiguous questions as this problem by default.
                 """.formatted(p.title(), p.slug()).trim();
+    }
+
+    public String buildUserLearningProfile(Long userId) {
+        if (userId == null) {
+            return """
+                    No authenticated user learning profile is available.
+                    Use only the current problem context and user question.
+                    """.trim();
+        }
+        Hot100AiRecommendationsView profile = hot100ProgressService.aiRecommendations(5, userId);
+        String weakTags = profile.weakTags().isEmpty() ? "none yet" : String.join(", ", profile.weakTags());
+        String masteredTags = profile.masteredTags().isEmpty() ? "none yet" : String.join(", ", profile.masteredTags());
+        String recentWrongProblems = profile.recentWrongProblems().isEmpty()
+                ? "none yet"
+                : String.join(", ", profile.recentWrongProblems());
+        return """
+                User learning profile:
+                - weak tags: %s
+                - mastered tags: %s
+                - recent wrong problems: %s
+                - suggested coaching mode: give hints first, focus on boundary cases, and connect advice to weak tags.
+                - coach summary: %s
+                """.formatted(
+                weakTags,
+                masteredTags,
+                recentWrongProblems,
+                profile.coachSummary()
+        ).trim();
     }
 
     private String guidedModeStrategy() {

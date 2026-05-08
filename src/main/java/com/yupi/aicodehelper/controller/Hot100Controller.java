@@ -3,6 +3,7 @@ package com.yupi.aicodehelper.controller;
 import com.yupi.aicodehelper.common.BaseResponse;
 import com.yupi.aicodehelper.auth.CurrentUserService;
 import com.yupi.aicodehelper.hot100.Hot100ProblemDetailView;
+import com.yupi.aicodehelper.hot100.Hot100AiRecommendationsView;
 import com.yupi.aicodehelper.hot100.Hot100ProgressService;
 import com.yupi.aicodehelper.hot100.Hot100ProgressUpsertRequest;
 import com.yupi.aicodehelper.hot100.Hot100ProgressView;
@@ -15,6 +16,10 @@ import com.yupi.aicodehelper.hot100.Hot100AsyncTaskService;
 import com.yupi.aicodehelper.hot100.Hot100AsyncTaskSubmitView;
 import com.yupi.aicodehelper.hot100.Hot100StudyPlanItemView;
 import com.yupi.aicodehelper.hot100.Hot100WeakTagView;
+import com.yupi.aicodehelper.hot100.Hot100WrongAnswerAnalyzeRequest;
+import com.yupi.aicodehelper.hot100.Hot100WrongAnswerAnalysisView;
+import com.yupi.aicodehelper.hot100.Hot100WrongAnalysisService;
+import com.yupi.aicodehelper.hot100.Hot100WrongBookItemView;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -36,15 +41,18 @@ public class Hot100Controller {
 
     private final Hot100Service hot100Service;
     private final Hot100ProgressService hot100ProgressService;
+    private final Hot100WrongAnalysisService hot100WrongAnalysisService;
     private final Hot100AsyncTaskService hot100AsyncTaskService;
     private final CurrentUserService currentUserService;
 
     public Hot100Controller(Hot100Service hot100Service,
                             Hot100ProgressService hot100ProgressService,
+                            Hot100WrongAnalysisService hot100WrongAnalysisService,
                             Hot100AsyncTaskService hot100AsyncTaskService,
                             CurrentUserService currentUserService) {
         this.hot100Service = hot100Service;
         this.hot100ProgressService = hot100ProgressService;
+        this.hot100WrongAnalysisService = hot100WrongAnalysisService;
         this.hot100AsyncTaskService = hot100AsyncTaskService;
         this.currentUserService = currentUserService;
     }
@@ -85,6 +93,19 @@ public class Hot100Controller {
         return BaseResponse.success(hot100ProgressService.wrongBook(userId));
     }
 
+    @GetMapping("/wrong-book/analysis")
+    public BaseResponse<List<Hot100WrongBookItemView>> wrongBookAnalysis() {
+        Long userId = currentUserService.requireUserId();
+        return BaseResponse.success(hot100ProgressService.wrongBookAnalysis(userId));
+    }
+
+    @PostMapping("/wrong-book/analyze")
+    public BaseResponse<Hot100WrongAnswerAnalysisView> analyzeWrongAnswer(
+            @Valid @RequestBody Hot100WrongAnswerAnalyzeRequest request) {
+        Long userId = currentUserService.requireUserId();
+        return BaseResponse.success(hot100WrongAnalysisService.analyzeWrongAnswer(request, userId));
+    }
+
     @GetMapping("/weak-tags")
     public BaseResponse<List<Hot100WeakTagView>> weakTags() {
         Long userId = currentUserService.requireUserId();
@@ -97,6 +118,14 @@ public class Hot100Controller {
             @Max(value = 20, message = "limit must be <= 20") int limit) {
         Long userId = currentUserService.requireUserId();
         return BaseResponse.success(hot100ProgressService.recommendNext(limit, userId));
+    }
+
+    @GetMapping("/ai-recommendations")
+    public BaseResponse<Hot100AiRecommendationsView> aiRecommendations(
+            @RequestParam(defaultValue = "5") @Min(value = 1, message = "limit must be >= 1")
+            @Max(value = 20, message = "limit must be <= 20") int limit) {
+        Long userId = currentUserService.requireUserId();
+        return BaseResponse.success(hot100ProgressService.aiRecommendations(limit, userId));
     }
 
     @PostMapping("/tasks/recommendations")

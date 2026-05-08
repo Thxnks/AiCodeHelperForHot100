@@ -1,0 +1,16 @@
+﻿{
+    "problemId":  238,
+    "title":  "除自身以外数组的乘积",
+    "slug":  "product-of-array-except-self",
+    "leetCodeUrl":  "https://leetcode.cn/problems/product-of-array-except-self/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "prefix-sum"
+             ],
+    "pattern":  "前缀积与后缀积",
+    "summary":  "返回数组中每个位置除自身以外所有元素的乘积。",
+    "coreIdea":  "抓住 前缀积与后缀积 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

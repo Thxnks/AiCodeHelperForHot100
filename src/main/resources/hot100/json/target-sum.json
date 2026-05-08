@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  494,
+    "title":  "目标和",
+    "slug":  "target-sum",
+    "leetCodeUrl":  "https://leetcode.cn/problems/target-sum/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "dynamic-programming",
+                 "backtracking"
+             ],
+    "pattern":  "转换为子集和",
+    "summary":  "给数组元素添加正负号，使表达式结果等于目标值，计算方法数。",
+    "coreIdea":  "抓住 转换为子集和 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

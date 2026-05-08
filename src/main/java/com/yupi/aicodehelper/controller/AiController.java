@@ -56,6 +56,7 @@ public class AiController {
         String coachingStrategy = hot100ChatContextService.buildCoachingStrategy(roleId);
         String solvingModeStrategy = hot100ChatContextService.buildSolvingModeStrategy(solvingMode);
         String problemContext = hot100ChatContextService.buildProblemContext(currentProblemSlug);
+        String userLearningProfile = hot100ChatContextService.buildUserLearningProfile(userId);
         String userFocusPrefix = hot100ChatContextService.buildUserFocusPrefix(currentProblemSlug);
         String effectiveMessage = userFocusPrefix.isBlank() ? message : userFocusPrefix + "\n\nUser question: " + message;
         String bigModelCapabilityNotice = bigModelCapabilityService.buildCapabilityNotice();
@@ -67,6 +68,7 @@ public class AiController {
                         coachingStrategy,
                         solvingModeStrategy,
                         problemContext,
+                        userLearningProfile,
                         bigModelCapabilityNotice
                 )
                 .doOnNext(aiAnswerBuffer::append)

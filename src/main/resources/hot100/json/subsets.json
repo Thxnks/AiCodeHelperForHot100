@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  78,
+    "title":  "子集",
+    "slug":  "subsets",
+    "leetCodeUrl":  "https://leetcode.cn/problems/subsets/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "backtracking",
+                 "bit-manipulation"
+             ],
+    "pattern":  "子集枚举",
+    "summary":  "返回数组所有可能的子集。",
+    "coreIdea":  "抓住 子集枚举 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

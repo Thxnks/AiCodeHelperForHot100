@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  406,
+    "title":  "根据身高重建队列",
+    "slug":  "queue-reconstruction-by-height",
+    "leetCodeUrl":  "https://leetcode.cn/problems/queue-reconstruction-by-height/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "greedy",
+                 "sorting"
+             ],
+    "pattern":  "排序后贪心插入",
+    "summary":  "根据身高和前方人数重建队列。",
+    "coreIdea":  "抓住 排序后贪心插入 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

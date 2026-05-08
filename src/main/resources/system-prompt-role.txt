@@ -17,6 +17,9 @@ Solving mode strategy (high priority):
 Current Hot100 problem context (if any):
 {{problemContext}}
 
+Current user learning profile (if any):
+{{userLearningProfile}}
+
 BigModel capability notice:
 {{bigModelCapabilityNotice}}
 

@@ -1,0 +1,16 @@
+﻿{
+    "problemId":  136,
+    "title":  "只出现一次的数字",
+    "slug":  "single-number",
+    "leetCodeUrl":  "https://leetcode.cn/problems/single-number/",
+    "difficulty":  "easy",
+    "tags":  [
+                 "array",
+                 "bit-manipulation"
+             ],
+    "pattern":  "异或抵消",
+    "summary":  "数组中除一个元素只出现一次外，其余都出现两次，找出只出现一次的元素。",
+    "coreIdea":  "抓住 异或抵消 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

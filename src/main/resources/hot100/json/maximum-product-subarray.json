@@ -1,0 +1,16 @@
+﻿{
+    "problemId":  152,
+    "title":  "乘积最大子数组",
+    "slug":  "maximum-product-subarray",
+    "leetCodeUrl":  "https://leetcode.cn/problems/maximum-product-subarray/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "dynamic-programming"
+             ],
+    "pattern":  "最大最小乘积 DP",
+    "summary":  "找出乘积最大的非空连续子数组。",
+    "coreIdea":  "抓住 最大最小乘积 DP 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

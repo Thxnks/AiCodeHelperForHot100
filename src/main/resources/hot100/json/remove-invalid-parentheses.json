@@ -1,0 +1,17 @@
+﻿{
+    "problemId":  301,
+    "title":  "删除无效的括号",
+    "slug":  "remove-invalid-parentheses",
+    "leetCodeUrl":  "https://leetcode.cn/problems/remove-invalid-parentheses/",
+    "difficulty":  "hard",
+    "tags":  [
+                 "string",
+                 "breadth-first-search",
+                 "backtracking"
+             ],
+    "pattern":  "BFS 或回溯删除",
+    "summary":  "删除最少数量的无效括号，使字符串有效并返回所有结果。",
+    "coreIdea":  "抓住 BFS 或回溯删除 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

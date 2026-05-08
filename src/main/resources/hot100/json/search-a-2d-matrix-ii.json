@@ -1,0 +1,18 @@
+﻿{
+    "problemId":  240,
+    "title":  "搜索二维矩阵 II",
+    "slug":  "search-a-2d-matrix-ii",
+    "leetCodeUrl":  "https://leetcode.cn/problems/search-a-2d-matrix-ii/",
+    "difficulty":  "medium",
+    "tags":  [
+                 "array",
+                 "binary-search",
+                 "divide-and-conquer",
+                 "matrix"
+             ],
+    "pattern":  "从右上角阶梯搜索",
+    "summary":  "在行列递增的二维矩阵中搜索目标值。",
+    "coreIdea":  "抓住 从右上角阶梯搜索 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}

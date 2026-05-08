@@ -1,0 +1,18 @@
+﻿{
+    "problemId":  85,
+    "title":  "最大矩形",
+    "slug":  "maximal-rectangle",
+    "leetCodeUrl":  "https://leetcode.cn/problems/maximal-rectangle/",
+    "difficulty":  "hard",
+    "tags":  [
+                 "array",
+                 "dynamic-programming",
+                 "stack",
+                 "matrix"
+             ],
+    "pattern":  "按行转柱状图",
+    "summary":  "在只包含 0 和 1 的矩阵中找出最大矩形面积。",
+    "coreIdea":  "抓住 按行转柱状图 的核心不变式，按正确顺序更新状态，并在每一步处理边界情况。",
+    "pitfalls":  "常见错误包括边界条件遗漏、状态更新顺序错误、重复元素处理不完整，以及把当前轮新增状态误用于当前判断。",
+    "complexity":  "取决于具体实现，常见解法通常为 O(n)、O(n log n) 或网格/动态规划问题中的 O(mn)。"
+}
