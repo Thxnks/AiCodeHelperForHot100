@@ -214,6 +214,53 @@
             <button @click="openStudyPlan(7)" class="study-plan-btn" type="button">7 天计划</button>
             <button @click="openStudyPlan(14)" class="study-plan-btn" type="button">14 天计划</button>
           </div>
+          <div v-if="currentUser" class="agent-console">
+            <div class="agent-console-head">
+              <strong>Hot100 Agent</strong>
+              <span v-if="agentTask">{{ agentTask.status }}</span>
+            </div>
+            <textarea
+              v-model="agentGoal"
+              rows="2"
+              placeholder="Tell the agent what to do..."
+            ></textarea>
+            <button
+              type="button"
+              class="agent-run-btn"
+              :disabled="isAgentRunning"
+              @click="runHot100AgentTask"
+            >
+              {{ isAgentRunning ? 'Running...' : 'Run Agent' }}
+            </button>
+            <p v-if="agentMessage" class="agent-message">{{ agentMessage }}</p>
+            <div v-if="agentTask" class="agent-result">
+              <p v-if="agentTask.finalAnswer">{{ agentTask.finalAnswer }}</p>
+              <div
+                class="agent-step"
+                :class="{ 'is-knowledge-step': step.toolName === 'retrieveKnowledge' }"
+                v-for="step in agentTask.steps || []"
+                :key="`${agentTask.taskId}-${step.stepOrder}`"
+              >
+                <div class="agent-step-main">
+                  <span>{{ step.stepOrder }}. {{ step.toolName }}</span>
+                  <small>{{ step.status }} / {{ step.latencyMs || 0 }}ms</small>
+                </div>
+                <div
+                  v-if="step.toolName === 'retrieveKnowledge' && parseKnowledgeSnippets(step).length > 0"
+                  class="knowledge-snippets"
+                >
+                  <div
+                    v-for="(snippet, index) in parseKnowledgeSnippets(step)"
+                    :key="`${agentTask.taskId}-${step.stepOrder}-snippet-${index}`"
+                    class="knowledge-snippet"
+                  >
+                    <strong>{{ snippet.source || 'knowledge' }}</strong>
+                    <p>{{ snippet.content }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           <div v-if="!currentUser" class="auth-tip">
             登录后可保存做题进度、查看标签掌握度和推荐题单
             <button type="button" @click="openAuthModal('login')">立即登录</button>
@@ -485,6 +532,7 @@ import {
   fetchHot100WeakTags,
   fetchHot100WrongBook,
   fetchHot100WrongBookAnalysis,
+  runHot100Agent,
   upsertHot100Progress
 } from './api/hot100Api.js'
 import { fetchErrorCodeDictionary } from './api/metaApi.js'
@@ -539,6 +587,10 @@ export default {
       aiRecommendations: null,
       tagMastery: [],
       datasetStats: null,
+      agentGoal: 'Analyze my weak tags and recommend the next Hot100 practice plan',
+      agentTask: null,
+      agentMessage: '',
+      isAgentRunning: false,
       showMasteryPanel: false,
       progressForm: {
         status: 'NOT_STARTED',
@@ -1033,6 +1085,8 @@ export default {
         this.aiRecommendations = null
         this.tagMastery = []
         this.datasetStats = null
+        this.agentTask = null
+        this.agentMessage = ''
         if (this.selectedProblem?.slug) {
           this.syncProgressFormBySlug(this.selectedProblem.slug)
         }
@@ -1069,6 +1123,52 @@ export default {
         }
       } catch (error) {
         console.error('Failed to load learning insights:', error)
+      }
+    },
+    async runHot100AgentTask() {
+      if (!this.currentUser) {
+        this.openAuthModal('login')
+        return
+      }
+      if (!this.agentGoal?.trim()) {
+        this.agentMessage = 'Please enter an agent goal.'
+        return
+      }
+      this.isAgentRunning = true
+      this.agentMessage = ''
+      try {
+        const payload = {
+          goal: this.agentGoal.trim(),
+          problemSlug: this.selectedProblem?.slug || undefined,
+          limit: 5,
+          days: this.studyPlanDays || 7
+        }
+        this.agentTask = await runHot100Agent(payload)
+        this.agentMessage = `Task ${this.agentTask.taskId} completed.`
+        await this.loadLearningInsights()
+      } catch (error) {
+        console.error('Failed to run Hot100 agent:', error)
+        this.agentMessage = error?.response?.data?.message || error?.message || 'Hot100 agent failed'
+      } finally {
+        this.isAgentRunning = false
+      }
+    },
+    parseKnowledgeSnippets(step) {
+      if (!step?.toolOutput) return []
+      try {
+        const parsed = typeof step.toolOutput === 'string'
+          ? JSON.parse(step.toolOutput)
+          : step.toolOutput
+        if (!Array.isArray(parsed)) return []
+        return parsed
+          .map((item) => ({
+            source: item?.source || 'knowledge',
+            content: item?.content || ''
+          }))
+          .filter((item) => item.content)
+          .slice(0, 5)
+      } catch (error) {
+        return []
       }
     },
     async searchHot100Problems() {
@@ -1659,6 +1759,116 @@ export default {
   border-radius: 10px;
   height: 34px;
   cursor: pointer;
+}
+
+.agent-console {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.agent-console-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.agent-console textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 8px;
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-run-btn {
+  height: 34px;
+  border: 1px solid #111827;
+  border-radius: 10px;
+  background: #111827;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.agent-run-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.agent-message,
+.agent-result p {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.agent-result {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-step {
+  display: grid;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+}
+
+.agent-step-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-step-main small {
+  flex-shrink: 0;
+  color: #64748b;
+}
+
+.agent-step.is-knowledge-step {
+  background: #ffffff;
+}
+
+.knowledge-snippets {
+  display: grid;
+  gap: 7px;
+}
+
+.knowledge-snippet {
+  display: grid;
+  gap: 4px;
+  padding: 7px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fbfbfa;
+}
+
+.knowledge-snippet strong {
+  color: #111827;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.knowledge-snippet p {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.48;
+  white-space: pre-wrap;
 }
 
 .hot100-body {

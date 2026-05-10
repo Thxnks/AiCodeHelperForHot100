@@ -32,6 +32,9 @@ public interface AiCodeHelperService {
     @SystemMessage(fromResource = "hot100-wrong-analysis-json-repair-prompt.txt")
     String repairHot100WrongAnalysisJson(String userMessage);
 
+    @SystemMessage(fromResource = "hot100-agent-planner-prompt.txt")
+    String planHot100AgentTask(String userMessage);
+
     @SystemMessage(fromResource = "system-prompt-role.txt")
     Flux<String> chatStream(@MemoryId int memoryId,
                             @UserMessage String userMessage,

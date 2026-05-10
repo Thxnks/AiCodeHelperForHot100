@@ -12,6 +12,7 @@ An AI-powered algorithm practice coach built with `Spring Boot 3`, `Vue 3`, and 
 - Hybrid recommendation flow: rule-based candidate recall plus AI coach-style explanation.
 - AI wrong-answer analysis with structured JSON output, repair retry, fallback degradation, persistence, and call logging.
 - AI chat enriched with current problem context and user learning profile.
+- Hot100 Agent workflow with model-driven planning, tool allow-list execution, persisted tool-call trace, and knowledge retrieval fallback.
 - Production-style backend stack: Spring Security, JWT, JPA, Flyway, Redis cache, async task support, Docker Compose.
 
 ## Tech Stack
@@ -57,6 +58,22 @@ user code / error description
   -> write ai_call_log for latency, success, repair, fallback, and error tracking
 ```
 
+## Hot100 Agent Flow
+
+The Hot100 Agent upgrades the project from prompt-based tutoring to a task-oriented workflow.
+
+```text
+user goal
+  -> LLM planner returns JSON tool plan
+  -> backend validates tool names against an allow-list
+  -> execute Hot100 tools: progress, weak tags, mastery, wrong book, recommendations, study plan
+  -> optionally retrieve knowledge from docs / Hot100 notes with vector search or keyword fallback
+  -> persist agent_task and agent_step trace records
+  -> return final answer with visible tool-call steps
+```
+
+If the model planner is unavailable or returns invalid JSON, the backend falls back to a deterministic rule-based plan so the workflow remains usable.
+
 ## Main APIs
 
 - `GET /api/hot100/problems`
@@ -67,6 +84,13 @@ user code / error description
 - `POST /api/hot100/wrong-book/analyze`
 - `GET /api/hot100/ai-recommendations`
 - `GET /api/ai/chat`
+- `POST /api/agent/hot100/run`
+- `GET /api/agent/hot100/tasks/{taskId}`
+- `GET /api/agent/hot100/tasks/{taskId}/steps`
+
+## Resume Description
+
+Designed and implemented an agentic Hot100 algorithm practice coach. The system uses an LLM planner to generate a JSON tool-call plan from the user's goal, validates tool names through a backend allow-list, and executes tools for progress lookup, weak-tag analysis, wrong-answer diagnosis, recommendation generation, study-plan creation, and knowledge retrieval. Each agent task persists `agent_task` and `agent_step` traces for observability, while planner failures automatically fall back to deterministic rules to preserve system stability.
 
 ## Quick Start
 

@@ -153,3 +153,10 @@ export async function fetchHot100DatasetStats() {
   })
   return unwrapBusinessResponse(response.data, 'Dataset stats failed')
 }
+
+export async function runHot100Agent(payload) {
+  const response = await apiClient.post('/agent/hot100/run', payload, {
+    timeout: 30000
+  })
+  return unwrapBusinessResponse(response.data, 'Hot100 agent task failed')
+}
