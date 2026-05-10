@@ -35,6 +35,9 @@ public interface AiCodeHelperService {
     @SystemMessage(fromResource = "hot100-agent-planner-prompt.txt")
     String planHot100AgentTask(String userMessage);
 
+    @SystemMessage(fromResource = "hot100-agent-final-report-prompt.txt")
+    String writeHot100AgentFinalReport(String userMessage);
+
     @SystemMessage(fromResource = "system-prompt-role.txt")
     Flux<String> chatStream(@MemoryId int memoryId,
                             @UserMessage String userMessage,
@@ -43,5 +46,5 @@ public interface AiCodeHelperService {
                             @V("solvingModeStrategy") String solvingModeStrategy,
                             @V("problemContext") String problemContext,
                             @V("userLearningProfile") String userLearningProfile,
-                            @V("bigModelCapabilityNotice") String bigModelCapabilityNotice);
+                            @V("mcpCapabilityNotice") String mcpCapabilityNotice);
 }

@@ -160,3 +160,24 @@ export async function runHot100Agent(payload) {
   })
   return unwrapBusinessResponse(response.data, 'Hot100 agent task failed')
 }
+
+export async function submitHot100AgentTask(payload) {
+  const response = await apiClient.post('/agent/hot100/tasks', payload, {
+    timeout: 8000
+  })
+  return unwrapBusinessResponse(response.data, 'Submit Hot100 agent task failed')
+}
+
+export async function fetchHot100AgentTask(taskId) {
+  const response = await apiClient.get(`/agent/hot100/tasks/${encodeURIComponent(taskId)}`, {
+    timeout: 8000
+  })
+  return unwrapBusinessResponse(response.data, 'Hot100 agent task query failed')
+}
+
+export async function fetchHot100AgentSteps(taskId) {
+  const response = await apiClient.get(`/agent/hot100/tasks/${encodeURIComponent(taskId)}/steps`, {
+    timeout: 8000
+  })
+  return asArray(unwrapBusinessResponse(response.data, 'Hot100 agent steps query failed'))
+}

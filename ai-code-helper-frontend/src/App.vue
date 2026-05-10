@@ -40,6 +40,7 @@
             type="button"
             class="session-item"
             :class="{ active: item.active }"
+            @click="openSession(item)"
           >
             <span>{{ item.title }}</span>
             <small>{{ item.meta }}</small>
@@ -237,7 +238,10 @@
               <p v-if="agentTask.finalAnswer">{{ agentTask.finalAnswer }}</p>
               <div
                 class="agent-step"
-                :class="{ 'is-knowledge-step': step.toolName === 'retrieveKnowledge' }"
+                :class="{
+                  'is-knowledge-step': step.toolName === 'retrieveKnowledge',
+                  'is-mcp-step': step.toolName === 'callMcpWebSearch'
+                }"
                 v-for="step in agentTask.steps || []"
                 :key="`${agentTask.taskId}-${step.stepOrder}`"
               >
@@ -257,6 +261,18 @@
                     <strong>{{ snippet.source || 'knowledge' }}</strong>
                     <p>{{ snippet.content }}</p>
                   </div>
+                </div>
+                <div
+                  v-if="step.toolName === 'callMcpWebSearch' && parseMcpSearchResult(step)"
+                  class="mcp-search-result"
+                >
+                  <div class="mcp-search-meta">
+                    <span>{{ parseMcpSearchResult(step).success ? 'MCP success' : 'MCP unavailable' }}</span>
+                    <small v-if="parseMcpSearchResult(step).toolName">{{ parseMcpSearchResult(step).toolName }}</small>
+                  </div>
+                  <p v-if="parseMcpSearchResult(step).query">Query: {{ parseMcpSearchResult(step).query }}</p>
+                  <p v-if="parseMcpSearchResult(step).content">{{ parseMcpSearchResult(step).content }}</p>
+                  <p v-else-if="parseMcpSearchResult(step).message">{{ parseMcpSearchResult(step).message }}</p>
                 </div>
               </div>
             </div>
@@ -510,7 +526,7 @@ import { marked } from 'marked'
 import ChatMessage from './components/ChatMessage.vue'
 import ChatInput from './components/ChatInput.vue'
 import LoadingDots from './components/LoadingDots.vue'
-import { chatWithSSE, fetchRoles } from './api/chatApi.js'
+import { chatWithSSE, fetchChatMessages, fetchChatSessions, fetchRoles } from './api/chatApi.js'
 import { fetchMe, loginAuth, logoutAuth, registerAuth } from './api/authApi.js'
 import {
   clearStoredAuthTokens,
@@ -532,7 +548,9 @@ import {
   fetchHot100WeakTags,
   fetchHot100WrongBook,
   fetchHot100WrongBookAnalysis,
-  runHot100Agent,
+  fetchHot100AgentSteps,
+  fetchHot100AgentTask,
+  submitHot100AgentTask,
   upsertHot100Progress
 } from './api/hot100Api.js'
 import { fetchErrorCodeDictionary } from './api/metaApi.js'
@@ -561,6 +579,8 @@ export default {
       solvingMode: 'guided',
       hot100View: 'list',
       messages: [],
+      chatSessions: [],
+      isLoadingSessions: false,
       memoryId: null,
       isAiTyping: false,
       isStreaming: false,
@@ -591,6 +611,7 @@ export default {
       agentTask: null,
       agentMessage: '',
       isAgentRunning: false,
+      agentPollTimer: null,
       showMasteryPanel: false,
       progressForm: {
         status: 'NOT_STARTED',
@@ -650,16 +671,25 @@ export default {
     },
     sessionHistory() {
       const firstUserMessage = this.messages.find((message) => message.isUser)
-      return [
-        {
-          id: 'current',
-          title: firstUserMessage?.content?.slice(0, 22) || '当前对话',
-          meta: this.messages.length > 0 ? `${this.messages.length} 条消息` : '等待开始',
-          active: true
-        },
-        { id: 'placeholder-1', title: 'Hot100 双指针复盘', meta: '历史占位', active: false },
-        { id: 'placeholder-2', title: '动态规划面试准备', meta: '历史占位', active: false }
-      ]
+      const currentItem = {
+        id: 'current',
+        memoryId: this.memoryId,
+        title: firstUserMessage?.content?.slice(0, 22) || '当前对话',
+        meta: this.messages.length > 0 ? `${this.messages.length} 条消息` : '等待开始',
+        active: true
+      }
+      const historyItems = this.chatSessions
+        .filter((session) => session.memoryId !== this.memoryId)
+        .slice(0, 8)
+        .map((session) => ({
+          id: `session-${session.memoryId}`,
+          memoryId: session.memoryId,
+          roleId: session.roleId,
+          title: session.title || '历史会话',
+          meta: this.formatSessionTime(session.updatedAt || session.createdAt),
+          active: false
+        }))
+      return [currentItem, ...historyItems]
     }
   },
   methods: {
@@ -749,6 +779,7 @@ export default {
         this.authMessage = this.authMode === 'register' ? '注册成功，已自动登录' : '登录成功'
         this.authMessageType = 'success'
         this.authForm.password = ''
+        await this.loadChatSessions()
         await this.loadLearningInsights()
         setTimeout(() => this.closeAuthModal(), 400)
       } catch (error) {
@@ -768,10 +799,12 @@ export default {
       try {
         setAuthHeaderToken(token)
         this.currentUser = await fetchMe()
+        await this.loadChatSessions()
       } catch (error) {
         clearStoredAuthTokens()
         setAuthHeaderToken('')
         this.currentUser = null
+        this.chatSessions = []
       }
     },
     async logout() {
@@ -783,6 +816,7 @@ export default {
       clearStoredAuthTokens()
       setAuthHeaderToken('')
       this.currentUser = null
+      this.chatSessions = []
       this.progressMap = {}
       this.wrongBook = []
       this.wrongBookAnalysis = []
@@ -812,6 +846,62 @@ export default {
       this.currentProblemSlug = null
       this.connectionError = false
       this.initializeChat()
+    },
+    async loadChatSessions() {
+      if (!this.currentUser) {
+        this.chatSessions = []
+        return
+      }
+      this.isLoadingSessions = true
+      try {
+        this.chatSessions = await fetchChatSessions()
+      } catch (error) {
+        console.error('Failed to load chat sessions:', error)
+        this.chatSessions = []
+      } finally {
+        this.isLoadingSessions = false
+      }
+    },
+    async openSession(item) {
+      if (!item?.memoryId || item.memoryId === this.memoryId) return
+      if (!this.currentUser) {
+        this.openAuthModal('login')
+        return
+      }
+      if (this.currentEventSource) {
+        this.currentEventSource.close()
+        this.currentEventSource = null
+      }
+      try {
+        const historyMessages = await fetchChatMessages(item.memoryId)
+        this.memoryId = item.memoryId
+        this.selectedRoleId = item.roleId || this.selectedRoleId
+        this.currentAiResponse = ''
+        this.isAiTyping = false
+        this.isStreaming = false
+        this.connectionError = false
+        this.messages = historyMessages.map((message) => ({
+          id: message.id || `${message.memoryId}-${message.createdAt}-${Math.random()}`,
+          content: message.content,
+          isUser: message.sender === 'user',
+          roleId: message.roleId || item.roleId || this.selectedRoleId,
+          timestamp: message.createdAt ? new Date(message.createdAt) : new Date()
+        }))
+        this.scrollToBottom()
+      } catch (error) {
+        console.error('Failed to open chat session:', error)
+      }
+    },
+    formatSessionTime(value) {
+      if (!value) return '历史会话'
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return '历史会话'
+      return date.toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     },
     addMessage(content, isUser = false, roleId = null) {
       this.messages.push({
@@ -870,6 +960,7 @@ export default {
         this.currentEventSource.close()
         this.currentEventSource = null
       }
+      this.loadChatSessions()
     },
     stopCurrentResponse() {
       if (!this.isAiTyping) return
@@ -1143,14 +1234,50 @@ export default {
           limit: 5,
           days: this.studyPlanDays || 7
         }
-        this.agentTask = await runHot100Agent(payload)
-        this.agentMessage = `Task ${this.agentTask.taskId} completed.`
-        await this.loadLearningInsights()
+        this.agentTask = await submitHot100AgentTask(payload)
+        this.agentMessage = `Task ${this.agentTask.taskId} submitted.`
+        this.startAgentPolling(this.agentTask.taskId)
       } catch (error) {
         console.error('Failed to run Hot100 agent:', error)
         this.agentMessage = error?.response?.data?.message || error?.message || 'Hot100 agent failed'
-      } finally {
         this.isAgentRunning = false
+      }
+    },
+    startAgentPolling(taskId) {
+      this.stopAgentPolling()
+      this.agentPollTimer = window.setInterval(() => {
+        this.refreshAgentTask(taskId)
+      }, 700)
+      this.refreshAgentTask(taskId)
+    },
+    stopAgentPolling() {
+      if (this.agentPollTimer) {
+        window.clearInterval(this.agentPollTimer)
+        this.agentPollTimer = null
+      }
+    },
+    async refreshAgentTask(taskId) {
+      try {
+        const [task, steps] = await Promise.all([
+          fetchHot100AgentTask(taskId),
+          fetchHot100AgentSteps(taskId)
+        ])
+        this.agentTask = {
+          ...task,
+          steps
+        }
+        if (task.status === 'SUCCESS' || task.status === 'FAILED') {
+          this.stopAgentPolling()
+          this.isAgentRunning = false
+          this.agentMessage = task.status === 'SUCCESS'
+            ? `Task ${task.taskId} completed.`
+            : (task.errorMessage || 'Hot100 agent failed')
+          if (task.status === 'SUCCESS') {
+            await this.loadLearningInsights()
+          }
+        }
+      } catch (error) {
+        console.error('Failed to refresh Hot100 agent task:', error)
       }
     },
     parseKnowledgeSnippets(step) {
@@ -1169,6 +1296,25 @@ export default {
           .slice(0, 5)
       } catch (error) {
         return []
+      }
+    },
+    parseMcpSearchResult(step) {
+      if (!step?.toolOutput) return null
+      try {
+        const parsed = typeof step.toolOutput === 'string'
+          ? JSON.parse(step.toolOutput)
+          : step.toolOutput
+        const content = parsed?.content || ''
+        const message = parsed?.message || ''
+        return {
+          success: Boolean(parsed?.success),
+          toolName: parsed?.toolName || '',
+          query: parsed?.arguments?.query || '',
+          content: content.length > 500 ? `${content.slice(0, 500)}...` : content,
+          message
+        }
+      } catch (error) {
+        return null
       }
     },
     async searchHot100Problems() {
@@ -1256,18 +1402,42 @@ export default {
   },
   beforeUnmount() {
     window.removeEventListener('resize', this.handleResize)
+    this.stopAgentPolling()
     if (this.currentEventSource) this.currentEventSource.close()
   }
 }
 </script>
 
 <style scoped>
+@font-face {
+  font-family: "AiCodeHelperLatin";
+  src: local("Microsoft YaHei"), local("微软雅黑");
+  unicode-range: U+0000-00FF, U+0100-024F, U+2000-206F, U+20A0-20CF;
+}
+
+@font-face {
+  font-family: "AiCodeHelperCjk";
+  src: local("Source Han Sans SC"), local("Noto Sans CJK SC"), local("思源黑体");
+  unicode-range: U+2E80-2EFF, U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+}
+
 .app-shell {
+  --font-app: "AiCodeHelperLatin", "AiCodeHelperCjk", "Source Han Sans SC", "Noto Sans CJK SC", "思源黑体", "Microsoft YaHei", "微软雅黑", sans-serif;
+  --font-claude-ui: var(--font-app);
+  --font-claude-display: var(--font-app);
   min-height: 100vh;
   background: #f8fafc;
   color: #0f172a;
+  font-family: var(--font-app);
   padding: 18px;
   box-sizing: border-box;
+}
+
+.app-shell button,
+.app-shell input,
+.app-shell textarea,
+.app-shell select {
+  font-family: inherit;
 }
 
 .mobile-switch {
@@ -1843,6 +2013,11 @@ export default {
   background: #ffffff;
 }
 
+.agent-step.is-mcp-step {
+  border-color: #d8d4c7;
+  background: #fffdf7;
+}
+
 .knowledge-snippets {
   display: grid;
   gap: 7px;
@@ -1866,6 +2041,40 @@ export default {
 .knowledge-snippet p {
   margin: 0;
   color: #475569;
+  font-size: 12px;
+  line-height: 1.48;
+  white-space: pre-wrap;
+}
+
+.mcp-search-result {
+  display: grid;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid #e5dfcf;
+  border-radius: 8px;
+  background: #fffaf0;
+}
+
+.mcp-search-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mcp-search-meta span {
+  color: #7c5e17;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.mcp-search-meta small {
+  color: #8b7355;
+}
+
+.mcp-search-result p {
+  margin: 0;
+  color: #4b5563;
   font-size: 12px;
   line-height: 1.48;
   white-space: pre-wrap;

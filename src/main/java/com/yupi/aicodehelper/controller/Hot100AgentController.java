@@ -35,6 +35,12 @@ public class Hot100AgentController {
         return BaseResponse.success(hot100AgentService.run(request, userId));
     }
 
+    @PostMapping("/tasks")
+    public BaseResponse<AgentTaskView> submit(@Valid @RequestBody Hot100AgentRunRequest request) {
+        Long userId = currentUserService.requireUserId();
+        return BaseResponse.success(hot100AgentService.submit(request, userId));
+    }
+
     @GetMapping("/tasks/{taskId}")
     public BaseResponse<AgentTaskView> getTask(@PathVariable String taskId) {
         Long userId = currentUserService.requireUserId();

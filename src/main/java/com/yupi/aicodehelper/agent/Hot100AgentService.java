@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yupi.aicodehelper.ai.AiCodeHelperService;
+import com.yupi.aicodehelper.ai.mcp.McpAgentToolService;
 import com.yupi.aicodehelper.common.ErrorCode;
 import com.yupi.aicodehelper.entity.AgentStep;
 import com.yupi.aicodehelper.entity.AgentTask;
@@ -32,6 +33,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 
 @Service
@@ -45,44 +48,64 @@ public class Hot100AgentService {
     private final Hot100WrongAnalysisService hot100WrongAnalysisService;
     private final AiCodeHelperService aiCodeHelperService;
     private final AgentKnowledgeService agentKnowledgeService;
+    private final McpAgentToolService mcpAgentToolService;
     private final AgentTaskRepository agentTaskRepository;
     private final AgentStepRepository agentStepRepository;
     private final ObjectMapper objectMapper;
+    private final Executor hot100TaskExecutor;
 
     public Hot100AgentService(Hot100Service hot100Service,
                               Hot100ProgressService hot100ProgressService,
                               Hot100WrongAnalysisService hot100WrongAnalysisService,
                               AiCodeHelperService aiCodeHelperService,
                               AgentKnowledgeService agentKnowledgeService,
+                              McpAgentToolService mcpAgentToolService,
                               AgentTaskRepository agentTaskRepository,
                               AgentStepRepository agentStepRepository,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              @org.springframework.beans.factory.annotation.Qualifier("hot100TaskExecutor") Executor hot100TaskExecutor) {
         this.hot100Service = hot100Service;
         this.hot100ProgressService = hot100ProgressService;
         this.hot100WrongAnalysisService = hot100WrongAnalysisService;
         this.aiCodeHelperService = aiCodeHelperService;
         this.agentKnowledgeService = agentKnowledgeService;
+        this.mcpAgentToolService = mcpAgentToolService;
         this.agentTaskRepository = agentTaskRepository;
         this.agentStepRepository = agentStepRepository;
         this.objectMapper = objectMapper;
+        this.hot100TaskExecutor = hot100TaskExecutor;
     }
 
     @Transactional
     public AgentTaskView run(Hot100AgentRunRequest request, Long userId) {
         AgentTask task = createTask(request, userId);
-        AgentRunContext context = new AgentRunContext(task.getTaskId(), request, userId);
+        executeTask(task.getTaskId(), request, userId);
+        return getTask(task.getTaskId(), userId);
+    }
+
+    @Transactional
+    public AgentTaskView submit(Hot100AgentRunRequest request, Long userId) {
+        AgentTask task = createTask(request, userId);
+        CompletableFuture.runAsync(() -> executeTask(task.getTaskId(), request, userId), hot100TaskExecutor);
+        return toView(task);
+    }
+
+    @Transactional
+    public void executeTask(String taskId, Hot100AgentRunRequest request, Long userId) {
+        AgentTask task = agentTaskRepository.findByUserIdAndTaskId(userId, taskId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Agent task not found"));
+        AgentRunContext context = new AgentRunContext(taskId, request, userId);
         try {
             executePlan(context);
             task.setStatus(AgentTaskStatus.SUCCESS.name());
-            task.setFinalAnswer(buildFinalAnswer(context));
+            task.setFinalAnswer(buildFinalAnswerWithModel(context));
             task.setErrorMessage(null);
         } catch (Exception e) {
             task.setStatus(AgentTaskStatus.FAILED.name());
             task.setErrorMessage(truncate(e.getMessage(), 1000));
             task.setFinalAnswer("Agent task failed before completing the Hot100 workflow.");
         }
-        AgentTask saved = agentTaskRepository.save(task);
-        return toView(saved);
+        agentTaskRepository.save(task);
     }
 
     @Transactional(readOnly = true)
@@ -314,6 +337,11 @@ public class Hot100AgentService {
                 yield invokeTool(context, toolName, Map.of("query", query, "limit", limit),
                         () -> agentKnowledgeService.retrieve(query, limit));
             }
+            case "callMcpWebSearch" -> {
+                String query = stringArg(args, "query", request.goal());
+                yield invokeTool(context, toolName, Map.of("query", query),
+                        () -> mcpAgentToolService.searchWeb(query));
+            }
             default -> throw new BusinessException(ErrorCode.BAD_REQUEST, "Unsupported agent tool: " + toolName);
         };
     }
@@ -344,6 +372,36 @@ public class Hot100AgentService {
             agentStepRepository.save(step);
             throw e;
         }
+    }
+
+    private String buildFinalAnswerWithModel(AgentRunContext context) {
+        String fallback = buildFinalAnswer(context);
+        try {
+            String report = aiCodeHelperService.writeHot100AgentFinalReport(buildFinalReportInput(context));
+            if (!isBlank(report)) {
+                return report.trim();
+            }
+        } catch (Exception ignored) {
+            return fallback;
+        }
+        return fallback;
+    }
+
+    private String buildFinalReportInput(AgentRunContext context) {
+        return """
+                User goal:
+                %s
+
+                Tool observations JSON:
+                %s
+
+                Template fallback summary:
+                %s
+                """.formatted(
+                context.request().goal(),
+                truncate(toJson(context.outputs()), 16000),
+                buildFinalAnswer(context)
+        ).trim();
     }
 
     private String buildFinalAnswer(AgentRunContext context) {
@@ -419,6 +477,17 @@ public class Hot100AgentService {
             answer.append("\n");
         }
 
+        McpAgentToolService.McpWebSearchResult mcpSearch = cast(outputs.get("callMcpWebSearch"));
+        if (mcpSearch != null) {
+            answer.append("MCP web search: ");
+            if (mcpSearch.success()) {
+                answer.append(truncate(mcpSearch.content(), 300));
+            } else {
+                answer.append(blankToPlaceholder(mcpSearch.message()));
+            }
+            answer.append("\n");
+        }
+
         Object wrongAnalysis = outputs.get("analyzeWrongAnswer");
         if (wrongAnalysis != null) {
             answer.append("Wrong-answer analysis has been generated and saved into the wrong-book record.\n");
@@ -491,7 +560,8 @@ public class Hot100AgentService {
                  "aiRecommendations",
                  "generateStudyPlan",
                  "searchProblems",
-                 "retrieveKnowledge" -> true;
+                 "retrieveKnowledge",
+                 "callMcpWebSearch" -> true;
             default -> false;
         };
     }

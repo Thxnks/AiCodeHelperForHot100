@@ -2,7 +2,7 @@ package com.yupi.aicodehelper.controller;
 
 import com.yupi.aicodehelper.ai.AiCodeHelperService;
 import com.yupi.aicodehelper.ai.RoleCardService;
-import com.yupi.aicodehelper.ai.mcp.BigModelCapabilityService;
+import com.yupi.aicodehelper.ai.mcp.QwenMcpCapabilityService;
 import com.yupi.aicodehelper.auth.CurrentUserService;
 import com.yupi.aicodehelper.chat.ChatPersistenceService;
 import com.yupi.aicodehelper.common.ErrorCode;
@@ -33,7 +33,7 @@ public class AiController {
     private Hot100ChatContextService hot100ChatContextService;
 
     @Resource
-    private BigModelCapabilityService bigModelCapabilityService;
+    private QwenMcpCapabilityService qwenMcpCapabilityService;
 
     @Resource
     private CurrentUserService currentUserService;
@@ -59,7 +59,7 @@ public class AiController {
         String userLearningProfile = hot100ChatContextService.buildUserLearningProfile(userId);
         String userFocusPrefix = hot100ChatContextService.buildUserFocusPrefix(currentProblemSlug);
         String effectiveMessage = userFocusPrefix.isBlank() ? message : userFocusPrefix + "\n\nUser question: " + message;
-        String bigModelCapabilityNotice = bigModelCapabilityService.buildCapabilityNotice();
+        String mcpCapabilityNotice = qwenMcpCapabilityService.buildCapabilityNotice();
         StringBuffer aiAnswerBuffer = new StringBuffer();
         return aiCodeHelperService.chatStream(
                         memoryId,
@@ -69,7 +69,7 @@ public class AiController {
                         solvingModeStrategy,
                         problemContext,
                         userLearningProfile,
-                        bigModelCapabilityNotice
+                        mcpCapabilityNotice
                 )
                 .doOnNext(aiAnswerBuffer::append)
                 .doOnComplete(() -> chatPersistenceService.recordAiMessage(memoryId, roleId, aiAnswerBuffer.toString(), userId))

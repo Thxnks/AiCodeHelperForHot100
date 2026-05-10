@@ -74,9 +74,6 @@ langchain4j:
       embedding-model:
         model-name: text-embedding-v4
         api-key: ${DASHSCOPE_API_KEY:}
-bigmodel:
-  enabled: false
-  api-key: ${BIGMODEL_API_KEY:}
 app:
   cache:
     redis-enabled: ${APP_CACHE_REDIS_ENABLED:true}
@@ -92,9 +89,12 @@ app:
     default-role-id: assistant
     config-path: classpath:roles/*.json
   mcp:
-    enabled: false
-    sse-url: https://open.bigmodel.cn/api/mcp/web_search/sse
+    enabled: ${APP_MCP_ENABLED:false}
+    sse-url: ${APP_MCP_SSE_URL:}
+    api-key: ${APP_MCP_API_KEY:${DASHSCOPE_API_KEY:}}
     reconnect-interval-seconds: 30
+    web-search-tool-name: ${APP_MCP_WEB_SEARCH_TOOL_NAME:web_search}
+    web-search-query-argument: ${APP_MCP_WEB_SEARCH_QUERY_ARGUMENT:query}
   rag:
     enabled: true
   hot100:

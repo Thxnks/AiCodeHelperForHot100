@@ -1,4 +1,4 @@
-import { apiClient, API_BASE_URL } from './httpClient'
+import { apiClient, API_BASE_URL, unwrapBusinessResponse } from './httpClient'
 
 export function chatWithSSE(
   memoryId,
@@ -89,4 +89,18 @@ export async function fetchRoles() {
       sortOrder: Number.isFinite(role.sortOrder) ? role.sortOrder : 9999
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
+export async function fetchChatSessions() {
+  const response = await apiClient.get('/chat/sessions', { timeout: 8000 })
+  const data = unwrapBusinessResponse(response.data, 'Chat sessions query failed')
+  return Array.isArray(data) ? data : []
+}
+
+export async function fetchChatMessages(memoryId) {
+  const response = await apiClient.get(`/chat/sessions/${encodeURIComponent(memoryId)}/messages`, {
+    timeout: 8000
+  })
+  const data = unwrapBusinessResponse(response.data, 'Chat messages query failed')
+  return Array.isArray(data) ? data : []
 }

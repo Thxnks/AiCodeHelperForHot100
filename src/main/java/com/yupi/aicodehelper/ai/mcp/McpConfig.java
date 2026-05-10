@@ -1,8 +1,7 @@
 package com.yupi.aicodehelper.ai.mcp;
 
 import com.yupi.aicodehelper.config.properties.AppMcpProperties;
-import com.yupi.aicodehelper.config.properties.BigModelProperties;
-import com.yupi.aicodehelper.config.condition.BigModelApiKeyPresentCondition;
+import com.yupi.aicodehelper.config.condition.AppMcpApiKeyPresentCondition;
 import dev.langchain4j.mcp.McpToolProvider;
 import dev.langchain4j.mcp.client.DefaultMcpClient;
 import dev.langchain4j.mcp.client.McpClient;
@@ -19,22 +18,18 @@ import java.time.Duration;
 
 @Configuration
 @ConditionalOnProperty(prefix = "app.mcp", name = "enabled", havingValue = "true")
-@ConditionalOnProperty(prefix = "bigmodel", name = "enabled", havingValue = "true")
-@Conditional(BigModelApiKeyPresentCondition.class)
+@Conditional(AppMcpApiKeyPresentCondition.class)
 public class McpConfig {
-
-    private final BigModelProperties bigModelProperties;
 
     private final AppMcpProperties appMcpProperties;
 
-    public McpConfig(BigModelProperties bigModelProperties, AppMcpProperties appMcpProperties) {
-        this.bigModelProperties = bigModelProperties;
+    public McpConfig(AppMcpProperties appMcpProperties) {
         this.appMcpProperties = appMcpProperties;
     }
 
     @Bean
-    public McpToolProvider mcpToolProvider() {
-        String apiKey = bigModelProperties.getApiKey();
+    public McpClient mcpClient() {
+        String apiKey = appMcpProperties.getApiKey();
         String sseUrl = appMcpProperties.getSseUrl();
         long reconnectIntervalSeconds = appMcpProperties.getReconnectIntervalSeconds();
 
@@ -47,12 +42,15 @@ public class McpConfig {
                 .logResponses(true)
                 .build();
 
-        McpClient mcpClient = new DefaultMcpClient.Builder()
+        return new DefaultMcpClient.Builder()
                 .key("yupiMcpClient")
                 .transport(transport)
                 .reconnectInterval(Duration.ofSeconds(reconnectIntervalSeconds))
                 .build();
+    }
 
+    @Bean
+    public McpToolProvider mcpToolProvider(McpClient mcpClient) {
         return McpToolProvider.builder()
                 .mcpClients(mcpClient)
                 .build();

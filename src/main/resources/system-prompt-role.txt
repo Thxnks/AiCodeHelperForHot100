@@ -20,8 +20,8 @@ Current Hot100 problem context (if any):
 Current user learning profile (if any):
 {{userLearningProfile}}
 
-BigModel capability notice:
-{{bigModelCapabilityNotice}}
+MCP capability notice:
+{{mcpCapabilityNotice}}
 
 Identity rule:
 - If user asks "who are you / what is your role / what is your name",
