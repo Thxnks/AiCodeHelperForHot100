@@ -24,6 +24,7 @@ public record Hot100AgentRunRequest(
         @Size(max = 4000, message = "errorDescription is too long")
         String errorDescription,
         @Size(max = 4000, message = "notes is too long")
-        String notes
+        String notes,
+        Boolean allowWrite
 ) {
 }

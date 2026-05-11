@@ -1,0 +1,116 @@
+package com.yupi.aicodehelper.agent;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yupi.aicodehelper.agent.core.AgentLoopService;
+import com.yupi.aicodehelper.agent.core.AgentToolRegistry;
+import com.yupi.aicodehelper.agent.core.SkillCatalogService;
+import com.yupi.aicodehelper.ai.AiCodeHelperService;
+import com.yupi.aicodehelper.entity.AgentStep;
+import com.yupi.aicodehelper.entity.AgentTask;
+import com.yupi.aicodehelper.repository.AgentStepRepository;
+import com.yupi.aicodehelper.repository.AgentTaskRepository;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+class Hot100AgentServiceTest {
+
+    @Test
+    void shouldRunLoopAndPersistTraceSteps() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        AiCodeHelperService aiCodeHelperService = mock(AiCodeHelperService.class);
+        Hot100AgentToolRegistry toolRegistry = mock(Hot100AgentToolRegistry.class);
+        AgentTaskRepository taskRepository = mock(AgentTaskRepository.class);
+        AgentStepRepository stepRepository = mock(AgentStepRepository.class);
+        AgentLoopService loopService = new AgentLoopService(objectMapper, SkillCatalogService.of(java.util.Map.of()));
+        Executor directExecutor = Runnable::run;
+
+        List<AgentTask> tasks = new ArrayList<>();
+        List<AgentStep> steps = new ArrayList<>();
+
+        when(taskRepository.save(any(AgentTask.class))).thenAnswer(invocation -> {
+            AgentTask task = invocation.getArgument(0);
+            tasks.removeIf(existing -> existing.getTaskId().equals(task.getTaskId()));
+            tasks.add(task);
+            return task;
+        });
+        when(taskRepository.findByUserIdAndTaskId(anyLong(), anyString())).thenAnswer(invocation -> {
+            Long userId = invocation.getArgument(0);
+            String taskId = invocation.getArgument(1);
+            return tasks.stream()
+                    .filter(task -> task.getUserId().equals(userId) && task.getTaskId().equals(taskId))
+                    .findFirst();
+        });
+        when(stepRepository.save(any(AgentStep.class))).thenAnswer(invocation -> {
+            AgentStep step = invocation.getArgument(0);
+            steps.add(step);
+            return step;
+        });
+        when(stepRepository.findByTaskIdOrderByStepOrderAsc(anyString())).thenAnswer(invocation -> {
+            String taskId = invocation.getArgument(0);
+            return steps.stream()
+                    .filter(step -> step.getTaskId().equals(taskId))
+                    .sorted(Comparator.comparing(AgentStep::getStepOrder))
+                    .toList();
+        });
+
+        when(toolRegistry.create(any(Hot100AgentRunRequest.class), anyLong()))
+                .thenReturn(new AgentToolRegistry());
+
+        AtomicInteger turn = new AtomicInteger();
+        when(aiCodeHelperService.runHot100AgentLoopTurn(anyString())).thenAnswer(invocation -> {
+            int currentTurn = turn.incrementAndGet();
+            if (currentTurn == 1) {
+                return """
+                        {"type":"tool_use","id":"toolu_todo","name":"todo_write","input":{"todos":[{"content":"Check weak tags","status":"IN_PROGRESS"}]}}
+                        """;
+            }
+            return """
+                    {"type":"final_answer","content":"Ready to practice."}
+                    """;
+        });
+
+        Hot100AgentService service = new Hot100AgentService(
+                aiCodeHelperService,
+                loopService,
+                toolRegistry,
+                taskRepository,
+                stepRepository,
+                objectMapper,
+                directExecutor
+        );
+
+        AgentTaskView view = service.run(new Hot100AgentRunRequest(
+                "Help me plan Hot100 practice",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        ), 1L);
+
+        assertThat(view.status()).isEqualTo(AgentTaskStatus.SUCCESS.name());
+        assertThat(view.finalAnswer()).isEqualTo("Ready to practice.");
+        assertThat(view.steps())
+                .extracting(AgentStepView::toolName)
+                .containsExactly("model_turn", "tool:todo_write", "model_turn");
+        assertThat(view.steps().get(1).toolOutput()).contains("Check weak tags", "IN_PROGRESS");
+        assertThat(taskRepository.findByUserIdAndTaskId(1L, view.taskId())).isPresent();
+        assertThat(stepRepository.findByTaskIdOrderByStepOrderAsc(view.taskId())).hasSize(3);
+    }
+}
