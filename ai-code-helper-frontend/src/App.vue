@@ -236,18 +236,66 @@
             <p v-if="agentMessage" class="agent-message">{{ agentMessage }}</p>
             <div v-if="agentTask" class="agent-result">
               <p v-if="agentTask.finalAnswer">{{ agentTask.finalAnswer }}</p>
+              <div v-if="selectedAgentRuntime" class="agent-runtime-panel">
+                <div class="agent-runtime-head">
+                  <div>
+                    <strong>Runtime {{ shortRuntimeId(selectedAgentRuntime.runtimeId) }}</strong>
+                    <small>{{ selectedAgentRuntime.stage || 'waiting' }}</small>
+                  </div>
+                  <span :class="runtimeStatusClass(selectedAgentRuntime.status)">
+                    {{ selectedAgentRuntime.status || 'PENDING' }}
+                  </span>
+                </div>
+                <div class="agent-runtime-track">
+                  <div
+                    class="agent-runtime-bar"
+                    :style="{ width: `${runtimeProgress(selectedAgentRuntime)}%` }"
+                  ></div>
+                </div>
+                <div class="agent-runtime-meta">
+                  <span>executor: {{ selectedAgentRuntime.executorId || '-' }}</span>
+                  <span>attempt: {{ selectedAgentRuntime.attempt || 1 }}</span>
+                  <span>progress: {{ runtimeProgress(selectedAgentRuntime) }}%</span>
+                </div>
+                <div v-if="agentRuntimeHistory.length > 1" class="agent-runtime-tabs">
+                  <button
+                    v-for="runtime in agentRuntimeHistory"
+                    :key="runtime.runtimeId"
+                    type="button"
+                    :class="{ active: runtime.runtimeId === selectedAgentRuntimeId }"
+                    @click="selectAgentRuntime(runtime.runtimeId)"
+                  >
+                    #{{ runtime.attempt || 1 }} {{ runtime.status || 'PENDING' }}
+                  </button>
+                </div>
+              </div>
+              <div class="agent-trace-summary">
+                <span>{{ agentTraceStats.total }} steps</span>
+                <span>{{ agentTraceStats.toolCalls }} tool calls</span>
+                <span>{{ agentTraceStats.latencyMs }}ms</span>
+                <span v-if="agentTraceStats.failed > 0">{{ agentTraceStats.failed }} failed</span>
+              </div>
+              <p v-if="isRuntimeTraceLoading" class="agent-message">Loading runtime trace...</p>
               <div
                 class="agent-step"
                 :class="{
                   'is-knowledge-step': step.toolName === 'retrieveKnowledge',
-                  'is-mcp-step': step.toolName === 'callMcpWebSearch'
+                  'is-mcp-step': step.toolName === 'callMcpWebSearch',
+                  'is-failed-step': (step.status || '').toUpperCase() === 'FAILED'
                 }"
-                v-for="step in agentTask.steps || []"
-                :key="`${agentTask.taskId}-${step.stepOrder}`"
+                v-for="step in agentTraceSteps"
+                :key="traceStepKey(step)"
               >
                 <div class="agent-step-main">
-                  <span>{{ step.stepOrder }}. {{ step.toolName }}</span>
+                  <span>{{ step.stepOrder }}. {{ step.toolName || 'agentStep' }}</span>
+                  <button type="button" @click="toggleTraceStep(step)">
+                    {{ isTraceStepExpanded(step) ? 'Hide' : 'Inspect' }}
+                  </button>
                   <small>{{ step.status }} / {{ step.latencyMs || 0 }}ms</small>
+                </div>
+                <div class="agent-step-meta">
+                  <span>runtime {{ shortRuntimeId(step.runtimeId || selectedAgentRuntimeId) }}</span>
+                  <span v-if="step.errorMessage">{{ step.errorMessage }}</span>
                 </div>
                 <div
                   v-if="step.toolName === 'retrieveKnowledge' && parseKnowledgeSnippets(step).length > 0"
@@ -273,6 +321,16 @@
                   <p v-if="parseMcpSearchResult(step).query">Query: {{ parseMcpSearchResult(step).query }}</p>
                   <p v-if="parseMcpSearchResult(step).content">{{ parseMcpSearchResult(step).content }}</p>
                   <p v-else-if="parseMcpSearchResult(step).message">{{ parseMcpSearchResult(step).message }}</p>
+                </div>
+                <div v-if="isTraceStepExpanded(step)" class="agent-step-details">
+                  <div>
+                    <strong>Input</strong>
+                    <pre>{{ formatTracePayload(step.toolInput) }}</pre>
+                  </div>
+                  <div>
+                    <strong>Output</strong>
+                    <pre>{{ formatTracePayload(step.toolOutput || step.errorMessage) }}</pre>
+                  </div>
                 </div>
               </div>
             </div>
@@ -548,6 +606,7 @@ import {
   fetchHot100WeakTags,
   fetchHot100WrongBook,
   fetchHot100WrongBookAnalysis,
+  fetchHot100AgentRuntimeSteps,
   fetchHot100AgentSteps,
   fetchHot100AgentTask,
   submitHot100AgentTask,
@@ -612,6 +671,10 @@ export default {
       agentMessage: '',
       isAgentRunning: false,
       agentPollTimer: null,
+      selectedAgentRuntimeId: '',
+      runtimeTraceSteps: [],
+      isRuntimeTraceLoading: false,
+      expandedTraceStepKeys: {},
       showMasteryPanel: false,
       progressForm: {
         status: 'NOT_STARTED',
@@ -668,6 +731,36 @@ export default {
       if (this.hot100View === 'wrongBook') return '错题本'
       if (this.hot100View === 'studyPlan') return '学习计划'
       return 'Hot100 题库'
+    },
+    agentRuntimeHistory() {
+      const history = Array.isArray(this.agentTask?.runtimeHistory)
+        ? [...this.agentTask.runtimeHistory]
+        : []
+      const latest = this.agentTask?.latestRuntime
+      if (latest?.runtimeId && !history.some((item) => item.runtimeId === latest.runtimeId)) {
+        history.unshift(latest)
+      }
+      return history
+    },
+    selectedAgentRuntime() {
+      return this.agentRuntimeHistory.find((item) => item.runtimeId === this.selectedAgentRuntimeId)
+        || this.agentTask?.latestRuntime
+        || null
+    },
+    agentTraceSteps() {
+      if (this.selectedAgentRuntimeId) {
+        return this.runtimeTraceSteps
+      }
+      return Array.isArray(this.agentTask?.steps) ? this.agentTask.steps : []
+    },
+    agentTraceStats() {
+      const steps = this.agentTraceSteps
+      return {
+        total: steps.length,
+        toolCalls: steps.filter((step) => step.toolName && step.toolName !== 'finalAnswer').length,
+        failed: steps.filter((step) => (step.status || '').toUpperCase() === 'FAILED').length,
+        latencyMs: steps.reduce((sum, step) => sum + Number(step.latencyMs || 0), 0)
+      }
     },
     sessionHistory() {
       const firstUserMessage = this.messages.find((message) => message.isUser)
@@ -1227,6 +1320,7 @@ export default {
       }
       this.isAgentRunning = true
       this.agentMessage = ''
+      this.resetAgentTraceState()
       try {
         const payload = {
           goal: this.agentGoal.trim(),
@@ -1235,6 +1329,7 @@ export default {
           days: this.studyPlanDays || 7
         }
         this.agentTask = await submitHot100AgentTask(payload)
+        this.syncSelectedAgentRuntime(this.agentTask)
         this.agentMessage = `Task ${this.agentTask.taskId} submitted.`
         this.startAgentPolling(this.agentTask.taskId)
       } catch (error) {
@@ -1256,6 +1351,45 @@ export default {
         this.agentPollTimer = null
       }
     },
+    resetAgentTraceState() {
+      this.selectedAgentRuntimeId = ''
+      this.runtimeTraceSteps = []
+      this.isRuntimeTraceLoading = false
+      this.expandedTraceStepKeys = {}
+    },
+    syncSelectedAgentRuntime(task) {
+      const history = Array.isArray(task?.runtimeHistory) ? task.runtimeHistory : []
+      const latestRuntimeId = task?.latestRuntime?.runtimeId || history[0]?.runtimeId || ''
+      const selectedStillExists = this.selectedAgentRuntimeId
+        && (this.selectedAgentRuntimeId === latestRuntimeId
+          || history.some((item) => item.runtimeId === this.selectedAgentRuntimeId))
+      if (!selectedStillExists && latestRuntimeId) {
+        this.selectedAgentRuntimeId = latestRuntimeId
+      }
+    },
+    async selectAgentRuntime(runtimeId) {
+      if (!runtimeId || !this.agentTask?.taskId) return
+      this.selectedAgentRuntimeId = runtimeId
+      this.expandedTraceStepKeys = {}
+      await this.loadAgentRuntimeSteps()
+    },
+    async loadAgentRuntimeSteps() {
+      if (!this.agentTask?.taskId || !this.selectedAgentRuntimeId) return
+      this.isRuntimeTraceLoading = true
+      try {
+        this.runtimeTraceSteps = await fetchHot100AgentRuntimeSteps(
+          this.agentTask.taskId,
+          this.selectedAgentRuntimeId
+        )
+      } catch (error) {
+        console.error('Failed to load Hot100 agent runtime steps:', error)
+        this.runtimeTraceSteps = Array.isArray(this.agentTask?.steps)
+          ? this.agentTask.steps.filter((step) => step.runtimeId === this.selectedAgentRuntimeId)
+          : []
+      } finally {
+        this.isRuntimeTraceLoading = false
+      }
+    },
     async refreshAgentTask(taskId) {
       try {
         const [task, steps] = await Promise.all([
@@ -1265,6 +1399,10 @@ export default {
         this.agentTask = {
           ...task,
           steps
+        }
+        this.syncSelectedAgentRuntime(task)
+        if (this.selectedAgentRuntimeId) {
+          this.runtimeTraceSteps = steps.filter((step) => step.runtimeId === this.selectedAgentRuntimeId)
         }
         if (task.status === 'SUCCESS' || task.status === 'FAILED') {
           this.stopAgentPolling()
@@ -1315,6 +1453,58 @@ export default {
         }
       } catch (error) {
         return null
+      }
+    },
+    traceStepKey(step) {
+      return `${step?.runtimeId || this.selectedAgentRuntimeId || this.agentTask?.taskId || 'trace'}-${step?.stepOrder || 0}`
+    },
+    toggleTraceStep(step) {
+      const key = this.traceStepKey(step)
+      this.expandedTraceStepKeys = {
+        ...this.expandedTraceStepKeys,
+        [key]: !this.expandedTraceStepKeys[key]
+      }
+    },
+    isTraceStepExpanded(step) {
+      return Boolean(this.expandedTraceStepKeys[this.traceStepKey(step)])
+    },
+    formatTracePayload(value) {
+      if (value === null || value === undefined || value === '') return '-'
+      try {
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value
+        return JSON.stringify(parsed, null, 2)
+      } catch (error) {
+        return String(value)
+      }
+    },
+    shortRuntimeId(runtimeId) {
+      if (!runtimeId) return '-'
+      return String(runtimeId).slice(0, 8)
+    },
+    runtimeProgress(runtime) {
+      if (!runtime) return 0
+      if (typeof runtime.progress === 'number') {
+        return Math.max(0, Math.min(100, Math.round(runtime.progress)))
+      }
+      const status = (runtime.status || '').toUpperCase()
+      if (status === 'SUCCESS') return 100
+      if (status === 'FAILED') return 100
+      if (status === 'RUNNING') return 55
+      if (status === 'CLAIMED') return 20
+      return 0
+    },
+    runtimeStatusClass(status) {
+      switch ((status || '').toUpperCase()) {
+        case 'SUCCESS':
+          return 'is-success'
+        case 'FAILED':
+          return 'is-failed'
+        case 'RUNNING':
+          return 'is-running'
+        case 'CLAIMED':
+          return 'is-claimed'
+        default:
+          return 'is-pending'
       }
     },
     async searchHot100Problems() {
@@ -1987,6 +2177,115 @@ export default {
   gap: 6px;
 }
 
+.agent-runtime-panel {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.agent-runtime-head,
+.agent-runtime-meta,
+.agent-trace-summary,
+.agent-step-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-runtime-head div {
+  display: grid;
+  gap: 2px;
+}
+
+.agent-runtime-head strong {
+  color: #0f172a;
+  font-size: 12px;
+}
+
+.agent-runtime-head small,
+.agent-runtime-meta,
+.agent-step-meta {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.agent-runtime-head span,
+.agent-trace-summary span {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.agent-runtime-head span.is-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.agent-runtime-head span.is-failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.agent-runtime-head span.is-running,
+.agent-runtime-head span.is-claimed {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.agent-runtime-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.agent-runtime-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
+  transition: width 0.2s ease;
+}
+
+.agent-runtime-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-runtime-tabs button,
+.agent-step-main button {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.agent-runtime-tabs button {
+  min-height: 26px;
+  padding: 3px 8px;
+}
+
+.agent-runtime-tabs button.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.agent-trace-summary {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
 .agent-step {
   display: grid;
   gap: 8px;
@@ -2000,8 +2299,22 @@ export default {
 
 .agent-step-main {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.agent-step-main span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  font-weight: 650;
+}
+
+.agent-step-main button {
+  flex-shrink: 0;
+  min-height: 24px;
+  padding: 2px 7px;
 }
 
 .agent-step-main small {
@@ -2016,6 +2329,41 @@ export default {
 .agent-step.is-mcp-step {
   border-color: #d8d4c7;
   background: #fffdf7;
+}
+
+.agent-step.is-failed-step {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.agent-step-details {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-step-details div {
+  display: grid;
+  gap: 4px;
+}
+
+.agent-step-details strong {
+  color: #334155;
+  font-size: 11px;
+}
+
+.agent-step-details pre {
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  padding: 7px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e5e7eb;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .knowledge-snippets {

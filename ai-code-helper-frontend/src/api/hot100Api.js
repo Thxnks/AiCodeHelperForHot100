@@ -181,3 +181,13 @@ export async function fetchHot100AgentSteps(taskId) {
   })
   return asArray(unwrapBusinessResponse(response.data, 'Hot100 agent steps query failed'))
 }
+
+export async function fetchHot100AgentRuntimeSteps(taskId, runtimeId) {
+  const response = await apiClient.get(
+    `/agent/hot100/tasks/${encodeURIComponent(taskId)}/runtimes/${encodeURIComponent(runtimeId)}/steps`,
+    {
+      timeout: 8000
+    }
+  )
+  return asArray(unwrapBusinessResponse(response.data, 'Hot100 agent runtime steps query failed'))
+}
