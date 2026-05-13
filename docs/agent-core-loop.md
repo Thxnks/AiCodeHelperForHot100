@@ -14,6 +14,7 @@ This stage implements the tutorial's core loop only:
 - s06 Current-run context compaction
 - s07 Basic tool permission gate
 - s08 Synchronous hook points
+- s09 Long-term memory
 - s10 Prompt pipeline
 - s11 Recovery policy
 - s12 Task system
@@ -157,6 +158,45 @@ Unknown tools and tool exceptions are returned as structured `tool_result` conte
 Maximum turn recovery is terminal. The loop returns a clear final answer containing the configured max turn count.
 
 Recovery events publish `ON_RECOVERY` through `AgentHookManager`.
+
+## Memory
+
+Long-term user memory is provided by `AgentMemoryService`.
+
+Memory records contain:
+
+- `memoryId`
+- `userId`
+- `type`
+- `scope`
+- `subject`
+- `content`
+- `importance`
+- `source`
+
+Current memory types:
+
+- `USER_PREFERENCE`
+- `WEAKNESS`
+- `WRONG_ANSWER`
+- `NEXT_ACTION`
+- `NOTE`
+
+Hot100 progress updates and wrong-answer analysis automatically write memory records for notes, weak knowledge points, wrong-answer patterns, and next actions.
+
+The Hot100 Agent exposes memory tools:
+
+- `memory_recall`
+- `memory_profile`
+- `memory_save`
+
+`memory_save` is a `WRITE` tool and requires explicit write permission, matching the existing permission model for durable side effects.
+
+Memory is also exposed through authenticated REST APIs:
+
+- `GET /agent/memory`
+- `GET /agent/memory/profile`
+- `POST /agent/memory`
 
 ## Task System
 
@@ -341,6 +381,7 @@ Core behavior is covered by:
 The tests verify:
 
 - Hot100 knowledge retrieval returns explainable local RAG chunks with metadata and matched terms
+- Agent memory can save progress-derived memories, recall by query, and summarize a user profile
 - tool results flow into following model turns
 - todo state is visible after `todo_write`
 - skills can be loaded through tools

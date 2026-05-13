@@ -9,7 +9,7 @@ AI Code Helper is a Spring Boot based Agent Runtime project for Hot100 algorithm
 This repository is designed to demonstrate backend engineering plus AI Agent application development:
 
 - Backend foundation: Spring Boot 3.5, Java 21, Spring Security, JWT, JPA, Flyway, Redis, RabbitMQ, Docker Compose.
-- Agent Runtime: multi-turn loop, tool registry, tool result feedback, todo state, skills, sub-agents, compaction, permissions, hooks, recovery, task graph, background runtime slots.
+- Agent Runtime: multi-turn loop, tool registry, tool result feedback, todo state, long-term memory, skills, sub-agents, compaction, permissions, hooks, recovery, task graph, background runtime slots.
 - Hot100 learning domain: progress analytics, weak-tag analysis, wrong-answer diagnosis, recommendations, study plans, problem search, and explainable RAG knowledge retrieval.
 
 ## Agent Runtime Architecture
@@ -75,6 +75,7 @@ This makes retries and future executor failover possible: one task can have mult
 - Hot100 tools: progress lookup, weak tags, tag mastery, wrong book, recommendation, study plan, problem detail, knowledge retrieval, guarded progress update
 - Runtime observability: `agent_task`, `runtimeHistory`, `latestRuntime`, `agent_step`
 - Explainable local RAG: Hot100 markdown/json are chunked with slug/title/section metadata, scored by matched terms, and returned through `retrieveKnowledge`
+- Long-term memory: wrong-answer patterns, weak knowledge points, notes, and next actions are persisted as user memories and exposed through `memory_recall`, `memory_profile`, and `memory_save`
 - Recovery policy for invalid model output, unknown tools, tool handler exceptions, and max-turn stops
 - Hook events for model turns, tool calls, permission denial, compaction, and recovery
 - Sub-agent support for focused problem analysis and wrong-answer review
@@ -93,6 +94,9 @@ Hot100:
 
 Agent:
 
+- `GET /api/agent/memory`
+- `GET /api/agent/memory/profile`
+- `POST /api/agent/memory`
 - `POST /api/agent/hot100/run`
 - `POST /api/agent/hot100/tasks`
 - `GET /api/agent/hot100/tasks/{taskId}`
@@ -116,6 +120,27 @@ Current baseline:
 - keeps LangChain4j `ContentRetriever` as an optional vector-store path when configured
 
 This gives the project a deterministic local RAG baseline for tests and demos, while keeping a clear extension point for embedding/vector search.
+
+## Agent Memory
+
+`AgentMemoryService` provides long-term user memory for personalization.
+
+Memory records include:
+
+- `type`: `USER_PREFERENCE`, `WEAKNESS`, `WRONG_ANSWER`, `NEXT_ACTION`, `NOTE`
+- `scope`: usually `hot100`
+- `subject`: problem slug or topic
+- `content`: durable memory text
+- `importance`: 1-10
+- `source`: `agent`, `progress`, or another producer
+
+The Hot100 progress and wrong-answer analysis flows automatically write memories for notes, weak knowledge points, wrong-answer patterns, and next actions. The Agent can recall them through `memory_recall` and summarize the profile through `memory_profile`.
+
+Memory can also be inspected or written through REST APIs:
+
+- `GET /api/agent/memory?query=dp&limit=10`
+- `GET /api/agent/memory/profile`
+- `POST /api/agent/memory`
 
 ## Tech Stack
 
@@ -163,7 +188,7 @@ npm run dev
 Run the focused Agent regression suite:
 
 ```powershell
-.\mvnw.cmd test "-Dtest=AgentKnowledgeServiceTest,RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
+.\mvnw.cmd test "-Dtest=AgentMemoryServiceTest,AgentKnowledgeServiceTest,RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
 ```
 
 Run all backend tests:
@@ -181,7 +206,7 @@ npm run build
 
 ## Resume Description
 
-Designed and implemented an AI Agent Runtime for Hot100 algorithm learning. The backend supports a multi-turn model/tool loop, backend-controlled tool registry, tool-result feedback, permission-gated write tools, local skills, sub-agents, context compaction, hook events, structured recovery, persistent task graph, background runtime slots, per-runtime execution trace, and explainable RAG retrieval.
+Designed and implemented an AI Agent Runtime for Hot100 algorithm learning. The backend supports a multi-turn model/tool loop, backend-controlled tool registry, tool-result feedback, permission-gated write tools, long-term memory, local skills, sub-agents, context compaction, hook events, structured recovery, persistent task graph, background runtime slots, per-runtime execution trace, and explainable RAG retrieval.
 
 Built the Hot100 business tool layer on top of the Agent Runtime, covering progress lookup, weak-tag analysis, wrong-answer diagnosis, recommendation generation, study-plan generation, problem search, knowledge retrieval, and guarded progress updates. The system keeps model reasoning flexible while keeping execution controlled, observable, testable, and permission-aware.
 

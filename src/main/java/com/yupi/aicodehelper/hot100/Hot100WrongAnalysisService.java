@@ -3,6 +3,7 @@ package com.yupi.aicodehelper.hot100;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yupi.aicodehelper.ai.AiCodeHelperService;
+import com.yupi.aicodehelper.agent.AgentMemoryService;
 import com.yupi.aicodehelper.common.ErrorCode;
 import com.yupi.aicodehelper.entity.AiCallLog;
 import com.yupi.aicodehelper.entity.Hot100ProblemProgress;
@@ -34,17 +35,20 @@ public class Hot100WrongAnalysisService {
     private final ObjectMapper objectMapper;
 
     private final AiCallLogRepository aiCallLogRepository;
+    private final AgentMemoryService agentMemoryService;
 
     public Hot100WrongAnalysisService(Hot100Service hot100Service,
                                       Hot100ProblemProgressRepository progressRepository,
                                       AiCodeHelperService aiCodeHelperService,
                                       ObjectMapper objectMapper,
-                                      AiCallLogRepository aiCallLogRepository) {
+                                      AiCallLogRepository aiCallLogRepository,
+                                      AgentMemoryService agentMemoryService) {
         this.hot100Service = hot100Service;
         this.progressRepository = progressRepository;
         this.aiCodeHelperService = aiCodeHelperService;
         this.objectMapper = objectMapper;
         this.aiCallLogRepository = aiCallLogRepository;
+        this.agentMemoryService = agentMemoryService;
     }
 
     @Transactional
@@ -110,7 +114,16 @@ public class Hot100WrongAnalysisService {
         entity.setAiFeedback(analysis.aiFeedback());
         entity.setNextAction(analysis.nextAction());
         entity.setLastReviewedAt(LocalDateTime.now());
-        progressRepository.save(entity);
+        Hot100ProblemProgress saved = progressRepository.save(entity);
+        agentMemoryService.rememberProgress(
+                userId,
+                saved.getProblemSlug(),
+                saved.getStatus(),
+                saved.getNotes(),
+                saved.getKnowledgePoint(),
+                saved.getWrongReason(),
+                saved.getNextAction()
+        );
     }
 
     private void recordAiCall(Long userId,

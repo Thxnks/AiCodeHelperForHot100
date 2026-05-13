@@ -26,6 +26,7 @@ public class Hot100AgentToolRegistry {
     private final Hot100ProgressService hot100ProgressService;
     private final Hot100WrongAnalysisService hot100WrongAnalysisService;
     private final AgentKnowledgeService agentKnowledgeService;
+    private final AgentMemoryService agentMemoryService;
     private final SubAgentService subAgentService;
     private final AiCodeHelperService aiCodeHelperService;
 
@@ -33,12 +34,14 @@ public class Hot100AgentToolRegistry {
                                    Hot100ProgressService hot100ProgressService,
                                    Hot100WrongAnalysisService hot100WrongAnalysisService,
                                    AgentKnowledgeService agentKnowledgeService,
+                                   AgentMemoryService agentMemoryService,
                                    SubAgentService subAgentService,
                                    AiCodeHelperService aiCodeHelperService) {
         this.hot100Service = hot100Service;
         this.hot100ProgressService = hot100ProgressService;
         this.hot100WrongAnalysisService = hot100WrongAnalysisService;
         this.agentKnowledgeService = agentKnowledgeService;
+        this.agentMemoryService = agentMemoryService;
         this.subAgentService = subAgentService;
         this.aiCodeHelperService = aiCodeHelperService;
     }
@@ -99,6 +102,20 @@ public class Hot100AgentToolRegistry {
                         agentKnowledgeService.retrieve(
                                 stringArg(input, "query", request.goal()),
                                 intArg(input, "limit", 5)
+                        ))
+                .register("memory_recall", "Recall long-term user memory. Optional input: query, limit.", input ->
+                        agentMemoryService.recall(userId, stringArg(input, "query", request.goal()), intArg(input, "limit", 5)))
+                .register("memory_profile", "Summarize long-term memory for the current user. Input: {}.", input ->
+                        agentMemoryService.profile(userId))
+                .register("memory_save", "Save one long-term memory. Input: type, subject, content, optional scope/importance/source.",
+                        AgentToolPermissionLevel.WRITE, input -> agentMemoryService.remember(
+                                userId,
+                                parseMemoryType(stringArg(input, "type", "NOTE")),
+                                stringArg(input, "scope", "hot100"),
+                                stringArg(input, "subject", request.goal()),
+                                stringArg(input, "content", request.goal()),
+                                intArg(input, "importance", 5),
+                                stringArg(input, "source", "agent")
                         ))
                 .register("analyzeProblemWithSubAgent", "Ask a focused sub-agent to analyze one Hot100 problem. Input: problemSlug.", input ->
                         runProblemSubAgent(input, request))
@@ -184,6 +201,17 @@ public class Hot100AgentToolRegistry {
     private void requireText(String value, String message) {
         if (value == null || value.isBlank()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, message);
+        }
+    }
+
+    private AgentMemoryType parseMemoryType(String value) {
+        if (value == null || value.isBlank()) {
+            return AgentMemoryType.NOTE;
+        }
+        try {
+            return AgentMemoryType.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException ignored) {
+            return AgentMemoryType.NOTE;
         }
     }
 

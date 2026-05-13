@@ -1,6 +1,7 @@
 package com.yupi.aicodehelper.hot100;
 
 import com.yupi.aicodehelper.common.ErrorCode;
+import com.yupi.aicodehelper.agent.AgentMemoryService;
 import com.yupi.aicodehelper.entity.Hot100ProblemProgress;
 import com.yupi.aicodehelper.exception.BusinessException;
 import com.yupi.aicodehelper.repository.Hot100ProblemProgressRepository;
@@ -28,13 +29,16 @@ public class Hot100ProgressService {
     private final Hot100Service hot100Service;
 
     private final Hot100ProblemLoader hot100ProblemLoader;
+    private final AgentMemoryService agentMemoryService;
 
     public Hot100ProgressService(Hot100ProblemProgressRepository progressRepository,
                                  Hot100Service hot100Service,
-                                 Hot100ProblemLoader hot100ProblemLoader) {
+                                 Hot100ProblemLoader hot100ProblemLoader,
+                                 AgentMemoryService agentMemoryService) {
         this.progressRepository = progressRepository;
         this.hot100Service = hot100Service;
         this.hot100ProblemLoader = hot100ProblemLoader;
+        this.agentMemoryService = agentMemoryService;
     }
 
     @Transactional
@@ -67,6 +71,15 @@ public class Hot100ProgressService {
         entity.setNextAction(request.nextAction());
         entity.setLastReviewedAt(LocalDateTime.now());
         Hot100ProblemProgress saved = progressRepository.save(entity);
+        agentMemoryService.rememberProgress(
+                userId,
+                saved.getProblemSlug(),
+                saved.getStatus(),
+                saved.getNotes(),
+                saved.getKnowledgePoint(),
+                saved.getWrongReason(),
+                saved.getNextAction()
+        );
         return Hot100ProgressView.from(saved);
     }
 
