@@ -8,4 +8,8 @@ import java.util.List;
 public interface AgentStepRepository extends JpaRepository<AgentStep, Long> {
 
     List<AgentStep> findByTaskIdOrderByStepOrderAsc(String taskId);
+
+    List<AgentStep> findByRuntimeIdOrderByStepOrderAsc(String runtimeId);
+
+    List<AgentStep> findByTaskIdAndRuntimeIdOrderByStepOrderAsc(String taskId, String runtimeId);
 }

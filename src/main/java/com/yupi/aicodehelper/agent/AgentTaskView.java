@@ -11,17 +11,24 @@ public record AgentTaskView(
         String goal,
         String finalAnswer,
         String errorMessage,
+        RuntimeSlotView latestRuntime,
+        List<RuntimeSlotView> runtimeHistory,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         List<AgentStepView> steps
 ) {
-    public static AgentTaskView from(AgentTask task, List<AgentStepView> steps) {
+    public static AgentTaskView from(AgentTask task,
+                                     RuntimeSlotView latestRuntime,
+                                     List<RuntimeSlotView> runtimeHistory,
+                                     List<AgentStepView> steps) {
         return new AgentTaskView(
                 task.getTaskId(),
                 task.getStatus(),
                 task.getGoal(),
                 task.getFinalAnswer(),
                 task.getErrorMessage(),
+                latestRuntime,
+                runtimeHistory,
                 task.getCreatedAt(),
                 task.getUpdatedAt(),
                 steps

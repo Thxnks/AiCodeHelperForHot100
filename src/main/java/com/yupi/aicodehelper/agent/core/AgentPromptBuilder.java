@@ -29,6 +29,7 @@ public class AgentPromptBuilder {
                 Rules:
                 - Use tools when you need real Hot100 progress, problem, weak-tag, recommendation, or knowledge data.
                 - Use todo_write to maintain a short plan for multi-step work, and todo_read when you need to inspect it.
+                - Use task_create/task_update/task_get/task_list for durable cross-turn work tracking and dependency management.
                 - Use list_skills and load_skill when a local skill would improve the answer.
                 - After receiving a tool_result, use it to decide the next step.
                 - After receiving a recovery message, correct the previous issue and continue.

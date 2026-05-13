@@ -2,143 +2,85 @@
 
 [中文文档](./README.zh-CN.md)
 
-An AI-powered Hot100 algorithm practice system built with `Spring Boot 3`, `Vue 3`, and `LangChain4j`. The project combines LeetCode-style practice data, user progress analytics, wrong-answer diagnosis, personalized recommendations, and an agentic Hot100 workflow.
+AI Code Helper is a Spring Boot based Agent Runtime project for Hot100 algorithm learning. It is not a thin LLM API wrapper: the backend controls tool execution, permissions, task runtime slots, trace persistence, and recovery while the model decides the next reasoning step through structured `tool_use` JSON.
 
-## Technical Highlights
+## Project Positioning
 
-- Agent core loop instead of one-shot prompt calls: `messages -> model -> tool_use -> tool_result -> next model turn -> final_answer`.
-- Backend tool registry with explicit tool names, descriptions, permission levels, and Java handlers.
-- Hot100 Agent tools for progress lookup, weak-tag analysis, tag mastery, wrong-book inspection, recommendations, study-plan generation, problem search, knowledge retrieval, and focused sub-agent review.
-- Built-in Agent state tools: `todo_read` and `todo_write` let the model maintain a short in-session plan during multi-step work.
-- Permission gate for tool execution: read tools are allowed by default, while write tools such as `updateProgress` and `analyzeWrongAnswer` require `allowWrite=true`.
-- Lightweight sub-agent support for focused problem analysis and wrong-answer review, with isolated child context and compact parent result.
-- Local skill loading through `list_skills` and `load_skill`; current skills cover Hot100 review, wrong-answer analysis, and interview coaching.
-- Context compaction for long current-run message history, preserving the original user goal, todos, turn count, and recent observations.
-- Prompt pipeline extracted into `AgentPromptBuilder`, making model input assembly testable separately from tool dispatch.
-- Recovery policy for invalid model JSON, unknown tools, tool exceptions, and max-turn stops; recovery is returned to the model as structured context when possible.
-- Synchronous hook events for model turns, tool calls, permission denial, compaction, and recovery, without letting hook failures break the main loop.
-- Persisted task trace: `agent_task` stores task status and final answer, while `agent_step` records model turns and tool execution details.
-- Production-style backend foundation: Spring Security, JWT auth, JPA, Flyway migrations, Redis cache fallback, async task executor, Docker Compose.
+This repository is designed to demonstrate backend engineering plus AI Agent application development:
 
-## Tech Stack
+- Backend foundation: Spring Boot 3.5, Java 21, Spring Security, JWT, JPA, Flyway, Redis, RabbitMQ, Docker Compose.
+- Agent Runtime: multi-turn loop, tool registry, tool result feedback, todo state, skills, sub-agents, compaction, permissions, hooks, recovery, task graph, background runtime slots.
+- Hot100 learning domain: progress analytics, weak-tag analysis, wrong-answer diagnosis, recommendations, study plans, problem search, and knowledge retrieval.
 
-- Backend: `Java 21`, `Spring Boot 3.5`, `Spring Security`, `Spring Data JPA`, `Flyway`
-- AI: `LangChain4j`, `DashScope/Qwen`
-- Frontend: `Vue 3`, `Vite`, `Axios`, `SSE`
-- Storage and middleware: `MySQL 8`, `Redis`, `RabbitMQ`
-- Deployment: `Docker`, `Docker Compose`
-
-## Architecture
+## Agent Runtime Architecture
 
 ```text
-Vue Frontend
-  |
-  | REST / SSE
-  v
-Spring Boot API
-  |
-  +-- Auth / JWT
-  +-- Hot100ProblemLoader
-  +-- Hot100ProgressService
-  +-- Hot100WrongAnalysisService
-  +-- AiCodeHelperService
-  +-- Hot100AgentService
-  |     |
-  |     +-- AgentLoopService
-  |     +-- AgentToolRegistry
-  |     +-- AgentPromptBuilder
-  |     +-- AgentPermissionGate
-  |     +-- AgentRecoveryPolicy
-  |     +-- AgentHookManager
-  |
-  +-- MySQL
-  +-- Redis
-  +-- RabbitMQ
+User Goal
+  -> AgentTask
+  -> RuntimeSlot
+  -> AgentLoopService
+       -> AgentPromptBuilder
+       -> model turn
+       -> tool_use JSON
+       -> AgentPermissionGate
+       -> AgentToolRegistry
+       -> Java tool handler
+       -> tool_result message
+       -> next model turn
+       -> final_answer
+  -> AgentStep trace
 ```
 
-## Hot100 Agent Flow
+The model is allowed to choose tools, but it cannot execute arbitrary code. Every tool must be registered by the backend with a name, description, permission level, and Java handler.
 
-The Hot100 Agent is model-driven, but tool execution stays controlled by the backend.
+## s12/s13 Task Runtime Model
+
+The project separates task definition from runtime execution attempts:
 
 ```text
-user goal
-  -> create agent_task
-  -> build Hot100 tool registry
-  -> model returns one JSON object
-  -> backend parses tool_use or final_answer
-  -> permission gate checks requested tool
-  -> backend executes registered Java handler
-  -> append structured tool_result into messages
-  -> next model turn observes real tool output
-  -> persist model/tool trace into agent_step
-  -> final_answer saved into agent_task
+AgentTask
+  taskId, userId, goal, aggregate status, finalAnswer
+      |
+      | 1:N
+      v
+RuntimeSlot
+  runtimeId, attempt, executorId, status, stage, progress, heartbeatAt
+      |
+      | 1:N
+      v
+AgentStep
+  runtimeId, stepOrder, model/tool input, output, status, latency
 ```
 
-Supported Hot100 Agent business tools include:
-
-- `getUserProgress`
-- `getWeakTags`
-- `getTagMastery`
-- `getProblemDetail`
-- `updateProgress`
-- `analyzeWrongAnswer`
-- `getWrongBook`
-- `recommendNext`
-- `aiRecommendations`
-- `generateStudyPlan`
-- `searchProblems`
-- `retrieveKnowledge`
-- `analyzeProblemWithSubAgent`
-- `reviewWrongAnswerWithSubAgent`
-
-Core Agent tools are registered automatically:
-
-- `todo_read`
-- `todo_write`
-- `list_skills`
-- `load_skill`
-
-## Agent Reliability Design
-
-The Agent loop includes several safeguards that are useful in backend interviews:
-
-- Tool allow-list: the model can only call tools registered by the backend.
-- Permission separation: read tools and write tools are modeled separately through `AgentToolPermissionLevel`.
-- Structured recovery: invalid model output, missing tools, tool exceptions, and max-turn exits are handled by `AgentRecoveryPolicy`.
-- Trace persistence: each model turn and tool execution is stored for auditability and frontend display.
-- Context control: long message history is compacted before it grows without bound.
-- Test coverage: core loop, prompt builder, permission behavior, hooks, recovery, sub-agent isolation, and Hot100 service trace persistence are covered by unit tests.
-
-## Core AI Flow
-
-Wrong-answer analysis is not implemented as a plain controller-to-model call.
+Status flow:
 
 ```text
-user code / error description
-  -> problem context enrichment
-  -> LLM structured JSON generation
-  -> backend JSON parsing and validation
-  -> one repair retry if parsing fails
-  -> conservative fallback if the model is unavailable
-  -> persist analysis into progress records
-  -> write ai_call_log for latency, success, repair, fallback, and error tracking
+POST /agent/hot100/tasks
+  -> AgentTask QUEUED
+  -> RuntimeSlot PENDING
+  -> RuntimeSlot RUNNING
+  -> AgentTask RUNNING
+  -> model_turn / tool_call trace rows
+  -> RuntimeSlot SUCCESS or FAILED
+  -> AgentTask SUCCESS or FAILED
 ```
 
-## MCP Extension
+This makes retries and future executor failover possible: one task can have multiple runtime slots, and each slot owns its own trace rows.
 
-The project contains an optional MCP integration for Qwen/DashScope-backed AI chat. When `app.mcp.enabled=true`, MCP SSE URL and API key are configured, a `McpClient` and `McpToolProvider` can be registered for LangChain4j.
+## Agent Capabilities
 
-Current Hot100 Agent core loop intentionally keeps MCP out of the first-stage Agent scope. Agent-side extension points are already present through the tool registry, permission levels, and hook system.
-
-Default MCP settings are environment-driven:
-
-- `APP_MCP_ENABLED=false`
-- `APP_MCP_SSE_URL=`
-- `APP_MCP_API_KEY=` defaults to `DASHSCOPE_API_KEY` when left empty
-- `APP_MCP_WEB_SEARCH_TOOL_NAME=web_search`
-- `APP_MCP_WEB_SEARCH_QUERY_ARGUMENT=query`
+- ReAct-style loop: `messages -> model -> tool_use -> tool_result -> next model turn -> final_answer`
+- Tool registry with permission levels: `READ`, `WRITE`, `EXTERNAL`, `SENSITIVE`
+- Built-in tools: `todo_read`, `todo_write`, `list_skills`, `load_skill`, `task_create`, `task_update`, `task_get`, `task_list`
+- Hot100 tools: progress lookup, weak tags, tag mastery, wrong book, recommendation, study plan, problem detail, knowledge retrieval, guarded progress update
+- Runtime observability: `agent_task`, `runtimeHistory`, `latestRuntime`, `agent_step`
+- Recovery policy for invalid model output, unknown tools, tool handler exceptions, and max-turn stops
+- Hook events for model turns, tool calls, permission denial, compaction, and recovery
+- Sub-agent support for focused problem analysis and wrong-answer review
 
 ## Main APIs
+
+Hot100:
 
 - `GET /api/hot100/problems`
 - `GET /api/hot100/problems/{slug}`
@@ -147,17 +89,26 @@ Default MCP settings are environment-driven:
 - `GET /api/hot100/wrong-book/analysis`
 - `POST /api/hot100/wrong-book/analyze`
 - `GET /api/hot100/ai-recommendations`
-- `GET /api/ai/chat`
-- `POST /api/agent/hot100/tasks`
+
+Agent:
+
 - `POST /api/agent/hot100/run`
+- `POST /api/agent/hot100/tasks`
 - `GET /api/agent/hot100/tasks/{taskId}`
 - `GET /api/agent/hot100/tasks/{taskId}/steps`
+- `GET /api/agent/hot100/tasks/{taskId}/runtimes/{runtimeId}/steps`
 
-## Resume Description
+Chat:
 
-Designed and implemented an agentic Hot100 algorithm practice coach. The backend contains a reusable Agent core loop that lets an LLM call registered Java tools through structured `tool_use` JSON, feeds `tool_result` observations back into later model turns, and persists model/tool traces for auditability. The Agent supports in-session todos, local skill loading, focused sub-agents, context compaction, permission-gated write tools, hook events, prompt pipeline separation, and structured recovery for invalid model output and tool failures.
+- `GET /api/ai/chat`
 
-Built the Hot100 business tool layer on top of the Agent core, covering progress lookup, weak-tag analytics, tag mastery, wrong-book review, recommendation generation, study-plan generation, knowledge retrieval, and guarded progress updates. The result is closer to a real backend Agent system than a simple prompt wrapper: model reasoning is flexible, but execution remains controlled, observable, testable, and permission-aware.
+## Tech Stack
+
+- Backend: `Java 21`, `Spring Boot 3.5`, `Spring Security`, `Spring Data JPA`, `Flyway`
+- AI: `LangChain4j`, `DashScope/Qwen`
+- Frontend: `Vue 3`, `Vite`, `Axios`, `SSE`
+- Storage and middleware: `MySQL 8`, `Redis`, `RabbitMQ`
+- Deployment: `Docker`, `Docker Compose`
 
 ## Quick Start
 
@@ -194,21 +145,37 @@ npm run dev
 
 ## Verification
 
+Run the focused Agent regression suite:
+
+```powershell
+.\mvnw.cmd test "-Dtest=RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
+```
+
+Run all backend tests:
+
 ```powershell
 .\mvnw.cmd test
+```
 
+Build frontend:
+
+```powershell
 cd ai-code-helper-frontend
 npm run build
 ```
 
-Current backend test coverage includes Agent loop, prompt builder, Hot100 Agent service, application context, API contract smoke tests, and auth flow tests.
+## Resume Description
+
+Designed and implemented an AI Agent Runtime for Hot100 algorithm learning. The backend supports a multi-turn model/tool loop, backend-controlled tool registry, tool-result feedback, permission-gated write tools, local skills, sub-agents, context compaction, hook events, structured recovery, persistent task graph, background runtime slots, and per-runtime execution trace.
+
+Built the Hot100 business tool layer on top of the Agent Runtime, covering progress lookup, weak-tag analysis, wrong-answer diagnosis, recommendation generation, study-plan generation, problem search, knowledge retrieval, and guarded progress updates. The system keeps model reasoning flexible while keeping execution controlled, observable, testable, and permission-aware.
 
 ## Project Structure
 
 ```text
 .
 |-- ai-code-helper-frontend/
-|-- src/main/java/
+|-- src/main/java/com/yupi/aicodehelper/
 |   |-- agent/
 |   |   |-- core/
 |   |   |-- Hot100AgentService.java
@@ -223,8 +190,7 @@ Current backend test coverage includes Agent loop, prompt builder, Hot100 Agent 
 |   |-- db/migration/
 |   |-- hot100/json/
 |   |-- hot100/markdown/
-|   |-- skills/
-|   `-- *.txt
+|   `-- skills/
 |-- docs/
 |   `-- agent-core-loop.md
 |-- docker-compose.yml

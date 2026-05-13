@@ -481,4 +481,49 @@ class AgentLoopServiceTest {
 
         assertThat(state.finalAnswer()).isEqualTo("Agent stopped after reaching the maximum turn limit (2).");
     }
+
+    @Test
+    void shouldUnlockBlockedTaskAfterDependencyCompleted() {
+        AgentLoopService loopService = new AgentLoopService(new ObjectMapper());
+        AgentToolRegistry registry = new AgentToolRegistry();
+        AtomicInteger turn = new AtomicInteger();
+
+        AgentLoopState state = loopService.run(
+                "Create and advance persistent tasks.",
+                registry,
+                prompt -> {
+                    int currentTurn = turn.incrementAndGet();
+                    if (currentTurn == 1) {
+                        return """
+                                {"type":"tool_use","id":"toolu_task_1","name":"task_create","input":{"subject":"Write parser"}}
+                                """;
+                    }
+                    if (currentTurn == 2) {
+                        return """
+                                {"type":"tool_use","id":"toolu_task_2","name":"task_create","input":{"subject":"Write semantic check","blockedBy":[1]}}
+                                """;
+                    }
+                    if (currentTurn == 3) {
+                        return """
+                                {"type":"tool_use","id":"toolu_task_3","name":"task_update","input":{"id":1,"status":"COMPLETED"}}
+                                """;
+                    }
+                    if (currentTurn == 4) {
+                        return """
+                                {"type":"tool_use","id":"toolu_task_4","name":"task_get","input":{"id":2}}
+                                """;
+                    }
+                    return """
+                            {"type":"final_answer","content":"Task #2 is unblocked and ready."}
+                            """;
+                },
+                AgentLoopObserver.NOOP,
+                8
+        );
+
+        assertThat(state.finalAnswer()).isEqualTo("Task #2 is unblocked and ready.");
+        assertThat(state.messages())
+                .extracting(AgentMessage::content)
+                .anySatisfy(content -> assertThat(content).contains("\"id\":2", "\"ready\":true", "\"blockedBy\":[]"));
+    }
 }

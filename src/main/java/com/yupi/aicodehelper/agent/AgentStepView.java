@@ -5,6 +5,7 @@ import com.yupi.aicodehelper.entity.AgentStep;
 import java.time.LocalDateTime;
 
 public record AgentStepView(
+        String runtimeId,
         Integer stepOrder,
         String toolName,
         String toolInput,
@@ -16,6 +17,7 @@ public record AgentStepView(
 ) {
     public static AgentStepView from(AgentStep step) {
         return new AgentStepView(
+                step.getRuntimeId(),
                 step.getStepOrder(),
                 step.getToolName(),
                 step.getToolInput(),

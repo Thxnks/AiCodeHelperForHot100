@@ -23,6 +23,9 @@ public class AgentStep {
     @Column(name = "task_id", nullable = false, length = 64)
     private String taskId;
 
+    @Column(name = "runtime_id", length = 80)
+    private String runtimeId;
+
     @Column(name = "step_order", nullable = false)
     private Integer stepOrder;
 

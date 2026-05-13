@@ -8,6 +8,7 @@ import com.yupi.aicodehelper.agent.core.AgentLoopService;
 import com.yupi.aicodehelper.agent.core.AgentLoopState;
 import com.yupi.aicodehelper.agent.core.AgentPermissionContext;
 import com.yupi.aicodehelper.agent.core.AgentToolRegistry;
+import com.yupi.aicodehelper.agent.core.RuntimeTaskService;
 import com.yupi.aicodehelper.common.ErrorCode;
 import com.yupi.aicodehelper.entity.AgentStep;
 import com.yupi.aicodehelper.entity.AgentTask;
@@ -20,8 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 
 @Service
 public class Hot100AgentService {
@@ -32,7 +31,7 @@ public class Hot100AgentService {
     private final AgentTaskRepository agentTaskRepository;
     private final AgentStepRepository agentStepRepository;
     private final ObjectMapper objectMapper;
-    private final Executor hot100TaskExecutor;
+    private final RuntimeTaskService runtimeTaskService;
 
     public Hot100AgentService(AiCodeHelperService aiCodeHelperService,
                               AgentLoopService agentLoopService,
@@ -40,46 +39,57 @@ public class Hot100AgentService {
                               AgentTaskRepository agentTaskRepository,
                               AgentStepRepository agentStepRepository,
                               ObjectMapper objectMapper,
-                              @org.springframework.beans.factory.annotation.Qualifier("hot100TaskExecutor") Executor hot100TaskExecutor) {
+                              RuntimeTaskService runtimeTaskService) {
         this.aiCodeHelperService = aiCodeHelperService;
         this.agentLoopService = agentLoopService;
         this.hot100AgentToolRegistry = hot100AgentToolRegistry;
         this.agentTaskRepository = agentTaskRepository;
         this.agentStepRepository = agentStepRepository;
         this.objectMapper = objectMapper;
-        this.hot100TaskExecutor = hot100TaskExecutor;
+        this.runtimeTaskService = runtimeTaskService;
     }
 
     @Transactional
     public AgentTaskView run(Hot100AgentRunRequest request, Long userId) {
-        AgentTask task = createTask(request, userId);
-        executeTask(task.getTaskId(), request, userId);
+        AgentTask task = createTask(request, userId, AgentTaskStatus.RUNNING);
+        executeTask(task.getTaskId(), request, userId, null);
         return getTask(task.getTaskId(), userId);
     }
 
-    @Transactional
     public AgentTaskView submit(Hot100AgentRunRequest request, Long userId) {
-        AgentTask task = createTask(request, userId);
-        CompletableFuture.runAsync(() -> executeTask(task.getTaskId(), request, userId), hot100TaskExecutor);
+        AgentTask task = createTask(request, userId, AgentTaskStatus.QUEUED);
+        runtimeTaskService.submit(task.getTaskId(), "hot100-agent", slot -> {
+            runtimeTaskService.heartbeat(slot.getRuntimeId(), "agent_loop", 25);
+            boolean success = executeTask(task.getTaskId(), request, userId, slot.getRuntimeId());
+            if (!success) {
+                throw new IllegalStateException("Agent task failed");
+            }
+        });
         return toView(task);
     }
 
     @Transactional
-    public void executeTask(String taskId, Hot100AgentRunRequest request, Long userId) {
+    public boolean executeTask(String taskId, Hot100AgentRunRequest request, Long userId, String runtimeId) {
         AgentTask task = agentTaskRepository.findByUserIdAndTaskId(userId, taskId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Agent task not found"));
-        AgentRunContext context = new AgentRunContext(taskId, request, userId);
+        AgentRunContext context = new AgentRunContext(taskId, runtimeId, request, userId);
+        boolean success = true;
         try {
+            task.setStatus(AgentTaskStatus.RUNNING.name());
+            task.setErrorMessage(null);
+            agentTaskRepository.save(task);
             String finalAnswer = executePlan(context);
             task.setStatus(AgentTaskStatus.SUCCESS.name());
             task.setFinalAnswer(finalAnswer);
             task.setErrorMessage(null);
         } catch (Exception e) {
+            success = false;
             task.setStatus(AgentTaskStatus.FAILED.name());
             task.setErrorMessage(truncate(e.getMessage(), 1000));
             task.setFinalAnswer("Agent task failed before completing the Hot100 workflow.");
         }
         agentTaskRepository.save(task);
+        return success;
     }
 
     @Transactional(readOnly = true)
@@ -98,12 +108,26 @@ public class Hot100AgentService {
                 .toList();
     }
 
-    private AgentTask createTask(Hot100AgentRunRequest request, Long userId) {
+    @Transactional(readOnly = true)
+    public List<AgentStepView> listRuntimeSteps(String taskId, String runtimeId, Long userId) {
+        agentTaskRepository.findByUserIdAndTaskId(userId, taskId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Agent task not found"));
+        boolean runtimeBelongsToTask = runtimeTaskService.listByTaskId(taskId).stream()
+                .anyMatch(slot -> slot.getRuntimeId().equals(runtimeId));
+        if (!runtimeBelongsToTask) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Runtime slot not found");
+        }
+        return agentStepRepository.findByTaskIdAndRuntimeIdOrderByStepOrderAsc(taskId, runtimeId).stream()
+                .map(AgentStepView::from)
+                .toList();
+    }
+
+    private AgentTask createTask(Hot100AgentRunRequest request, Long userId, AgentTaskStatus status) {
         AgentTask task = new AgentTask();
         task.setTaskId(UUID.randomUUID().toString().replace("-", ""));
         task.setUserId(userId);
         task.setGoal(request.goal().trim());
-        task.setStatus(AgentTaskStatus.RUNNING.name());
+        task.setStatus(status.name());
         return agentTaskRepository.save(task);
     }
 
@@ -172,6 +196,7 @@ public class Hot100AgentService {
                           String errorMessage) {
         AgentStep step = new AgentStep();
         step.setTaskId(context.taskId());
+        step.setRuntimeId(context.runtimeId());
         step.setStepOrder(context.nextStepOrder());
         step.setToolName(toolName);
         step.setToolInput(truncate(toJson(input), 12000));
@@ -186,7 +211,13 @@ public class Hot100AgentService {
         List<AgentStepView> steps = agentStepRepository.findByTaskIdOrderByStepOrderAsc(task.getTaskId()).stream()
                 .map(AgentStepView::from)
                 .toList();
-        return AgentTaskView.from(task, steps);
+        RuntimeSlotView latestRuntime = runtimeTaskService.getLatestByTaskId(task.getTaskId())
+                .map(RuntimeSlotView::from)
+                .orElse(null);
+        List<RuntimeSlotView> runtimeHistory = runtimeTaskService.listByTaskId(task.getTaskId()).stream()
+                .map(RuntimeSlotView::from)
+                .toList();
+        return AgentTaskView.from(task, latestRuntime, runtimeHistory, steps);
     }
 
     private String blankToNullText(String value) {
@@ -214,18 +245,24 @@ public class Hot100AgentService {
 
     private static class AgentRunContext {
         private final String taskId;
+        private final String runtimeId;
         private final Hot100AgentRunRequest request;
         private final Long userId;
         private int stepOrder = 0;
 
-        private AgentRunContext(String taskId, Hot100AgentRunRequest request, Long userId) {
+        private AgentRunContext(String taskId, String runtimeId, Hot100AgentRunRequest request, Long userId) {
             this.taskId = taskId;
+            this.runtimeId = runtimeId;
             this.request = request;
             this.userId = userId;
         }
 
         private String taskId() {
             return taskId;
+        }
+
+        private String runtimeId() {
+            return runtimeId;
         }
 
         private Hot100AgentRunRequest request() {

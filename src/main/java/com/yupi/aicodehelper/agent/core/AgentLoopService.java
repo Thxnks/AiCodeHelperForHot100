@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -25,22 +26,26 @@ public class AgentLoopService {
     private final AgentHookManager hookManager;
     private final AgentPromptBuilder promptBuilder;
     private final AgentRecoveryPolicy recoveryPolicy;
+    private final TaskGraphService taskGraphService;
 
     public AgentLoopService(ObjectMapper objectMapper) {
         this(objectMapper, SkillCatalogService.of(Map.of()), new AgentPermissionGate(), new AgentHookManager(),
-                new AgentPromptBuilder(objectMapper), new AgentRecoveryPolicy());
+                new AgentPromptBuilder(objectMapper), new AgentRecoveryPolicy(),
+                new TaskGraphService(new InMemoryTaskBoard()));
     }
 
     public AgentLoopService(ObjectMapper objectMapper, SkillCatalogService skillCatalogService) {
         this(objectMapper, skillCatalogService, new AgentPermissionGate(), new AgentHookManager(),
-                new AgentPromptBuilder(objectMapper), new AgentRecoveryPolicy());
+                new AgentPromptBuilder(objectMapper), new AgentRecoveryPolicy(),
+                new TaskGraphService(new InMemoryTaskBoard()));
     }
 
     public AgentLoopService(ObjectMapper objectMapper,
                             SkillCatalogService skillCatalogService,
                             AgentPermissionGate permissionGate) {
         this(objectMapper, skillCatalogService, permissionGate, new AgentHookManager(),
-                new AgentPromptBuilder(objectMapper), new AgentRecoveryPolicy());
+                new AgentPromptBuilder(objectMapper), new AgentRecoveryPolicy(),
+                new TaskGraphService(new InMemoryTaskBoard()));
     }
 
     public AgentLoopService(ObjectMapper objectMapper,
@@ -48,7 +53,7 @@ public class AgentLoopService {
                             AgentPermissionGate permissionGate,
                             AgentHookManager hookManager) {
         this(objectMapper, skillCatalogService, permissionGate, hookManager, new AgentPromptBuilder(objectMapper),
-                new AgentRecoveryPolicy());
+                new AgentRecoveryPolicy(), new TaskGraphService(new InMemoryTaskBoard()));
     }
 
     @Autowired
@@ -57,13 +62,26 @@ public class AgentLoopService {
                             AgentPermissionGate permissionGate,
                             AgentHookManager hookManager,
                             AgentPromptBuilder promptBuilder,
-                            AgentRecoveryPolicy recoveryPolicy) {
+                            AgentRecoveryPolicy recoveryPolicy,
+                            TaskBoard taskBoard) {
+        this(objectMapper, skillCatalogService, permissionGate, hookManager, promptBuilder, recoveryPolicy,
+                new TaskGraphService(taskBoard));
+    }
+
+    public AgentLoopService(ObjectMapper objectMapper,
+                            SkillCatalogService skillCatalogService,
+                            AgentPermissionGate permissionGate,
+                            AgentHookManager hookManager,
+                            AgentPromptBuilder promptBuilder,
+                            AgentRecoveryPolicy recoveryPolicy,
+                            TaskGraphService taskGraphService) {
         this.objectMapper = objectMapper;
         this.skillCatalogService = skillCatalogService;
         this.permissionGate = permissionGate;
         this.hookManager = hookManager;
         this.promptBuilder = promptBuilder;
         this.recoveryPolicy = recoveryPolicy;
+        this.taskGraphService = taskGraphService;
     }
 
     public AgentLoopState run(String userGoal,
@@ -98,6 +116,7 @@ public class AgentLoopService {
         AgentLoopState state = new AgentLoopState(userGoal);
         registerTodoTools(toolRegistry, state);
         registerSkillTools(toolRegistry);
+        registerTaskTools(toolRegistry);
         AgentLoopObserver safeObserver = observer == null ? AgentLoopObserver.NOOP : observer;
 
         while (!state.finished() && state.turnCount() < maxTurns) {
@@ -218,6 +237,43 @@ public class AgentLoopService {
                         skillCatalogService.loadSkill(stringArg(input, "name")));
     }
 
+    private void registerTaskTools(AgentToolRegistry toolRegistry) {
+        toolRegistry
+                .register("task_create", "Create one persistent task. Input: subject, optional description/owner/blockedBy[].", input -> {
+                    String subject = stringArg(input, "subject");
+                    if (subject.isBlank()) {
+                        throw new IllegalArgumentException("subject is required for task_create");
+                    }
+                    TaskRecord task = taskGraphService.create(
+                            subject,
+                            stringArg(input, "description"),
+                            stringArg(input, "owner"),
+                            longListArg(input, "blockedBy")
+                    );
+                    return taskToMap(task);
+                })
+                .register("task_update", "Update a persistent task. Input: id plus optional status/subject/description/owner/addBlocks/removeBlocks/blockedBy.", input -> {
+                    long id = longArg(input, "id");
+                    TaskRecord task = taskGraphService.update(
+                            id,
+                            nullableStringArg(input, "subject"),
+                            nullableStringArg(input, "description"),
+                            nullableStringArg(input, "owner"),
+                            parseTaskStatus(nullableStringArg(input, "status")),
+                            nullableLongListArg(input, "addBlocks"),
+                            nullableLongListArg(input, "removeBlocks"),
+                            nullableLongListArg(input, "blockedBy")
+                    );
+                    return taskToMap(task);
+                })
+                .register("task_get", "Get one persistent task by id. Input: id.", input -> {
+                    long id = longArg(input, "id");
+                    return taskToMap(taskGraphService.get(id));
+                })
+                .register("task_list", "List persistent tasks. Input: optional includeDeleted.", input ->
+                        taskGraphService.list(booleanArg(input, "includeDeleted", false)));
+    }
+
     private void compactIfNeeded(AgentLoopState state) {
         String renderedMessages = promptBuilder.renderMessages(state);
         if (state.messages().size() <= MAX_MESSAGES_BEFORE_COMPACT
@@ -307,6 +363,85 @@ public class AgentLoopService {
     private String stringArg(Map<String, Object> input, String key) {
         Object value = input == null ? null : input.get(key);
         return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private String nullableStringArg(Map<String, Object> input, String key) {
+        Object value = input == null ? null : input.get(key);
+        return value == null ? null : String.valueOf(value).trim();
+    }
+
+    private long longArg(Map<String, Object> input, String key) {
+        String value = stringArg(input, key);
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(key + " is required");
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(key + " must be a number");
+        }
+    }
+
+    private List<Long> longListArg(Map<String, Object> input, String key) {
+        List<Long> value = nullableLongListArg(input, key);
+        return value == null ? List.of() : value;
+    }
+
+    private List<Long> nullableLongListArg(Map<String, Object> input, String key) {
+        Object raw = input == null ? null : input.get(key);
+        if (raw == null) {
+            return null;
+        }
+        if (!(raw instanceof List<?> rawList)) {
+            throw new IllegalArgumentException(key + " must be an array");
+        }
+        List<Long> result = new ArrayList<>();
+        for (Object item : rawList) {
+            if (item == null) {
+                continue;
+            }
+            try {
+                result.add(Long.parseLong(String.valueOf(item)));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(key + " contains non-number item");
+            }
+        }
+        return result;
+    }
+
+    private boolean booleanArg(Map<String, Object> input, String key, boolean defaultValue) {
+        Object raw = input == null ? null : input.get(key);
+        if (raw == null) {
+            return defaultValue;
+        }
+        if (raw instanceof Boolean value) {
+            return value;
+        }
+        return Boolean.parseBoolean(String.valueOf(raw));
+    }
+
+    private TaskStatus parseTaskStatus(String rawStatus) {
+        if (rawStatus == null || rawStatus.isBlank()) {
+            return null;
+        }
+        try {
+            return TaskStatus.valueOf(rawStatus.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("status must be one of PENDING|IN_PROGRESS|COMPLETED|DELETED");
+        }
+    }
+
+    private Map<String, Object> taskToMap(TaskRecord task) {
+        return Map.of(
+                "id", task.getId(),
+                "subject", Objects.toString(task.getSubject(), ""),
+                "description", Objects.toString(task.getDescription(), ""),
+                "status", task.getStatus(),
+                "blockedBy", List.copyOf(task.getBlockedBy()),
+                "blocks", List.copyOf(task.getBlocks()),
+                "owner", Objects.toString(task.getOwner(), ""),
+                "ready", task.isReady()
+        );
     }
 
     private void appendToolResult(AgentLoopState state, ToolUseBlock toolUse, Object output) {

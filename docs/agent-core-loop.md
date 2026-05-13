@@ -16,8 +16,10 @@ This stage implements the tutorial's core loop only:
 - s08 Synchronous hook points
 - s10 Prompt pipeline
 - s11 Recovery policy
+- s12 Task system
+- s13 Background runtime task slots
 
-It intentionally does not include long-term memory, durable task graphs, background workers, scheduled agents, agent teams, worktree isolation, webhook/plugin hook execution, or MCP/plugin platform features.
+It intentionally does not include long-term memory, scheduled agents, agent teams, worktree isolation, webhook/plugin hook execution, or MCP/plugin platform features.
 
 ## Runtime Loop
 
@@ -156,6 +158,95 @@ Maximum turn recovery is terminal. The loop returns a clear final answer contain
 
 Recovery events publish `ON_RECOVERY` through `AgentHookManager`.
 
+## Task System
+
+Durable task tracking is provided by `TaskGraphService`.
+
+The loop now exposes task tools:
+
+- `task_create`
+- `task_update`
+- `task_get`
+- `task_list`
+
+`TaskRecord` contains:
+
+- `id`
+- `subject`
+- `description`
+- `status`
+- `blockedBy`
+- `blocks`
+- `owner`
+
+Ready rule:
+
+- `status == PENDING`
+- `blockedBy` is empty
+
+When a task is marked `COMPLETED`, dependent tasks are automatically unlocked by removing the completed task id from their `blockedBy`.
+
+Current persistence strategy:
+
+- Spring runtime: file-based `.tasks/task_<id>.json` via `FileTaskBoard`
+- unit tests and local constructors: `InMemoryTaskBoard`
+
+## Background Runtime Tasks
+
+s13 adds runtime execution slots through `RuntimeTaskService`.
+
+The boundary is:
+
+- `TaskGraphService` / `TaskRecord`: durable description of work and dependencies
+- `RuntimeTaskService` / `RuntimeSlotState`: in-process execution slot for who is running a task right now
+
+`RuntimeSlotState` contains:
+
+- `runtimeId`
+- `taskId`
+- `owner`
+- `attempt`
+- `executorId`
+- `status`
+- `stage`
+- `progress`
+- `errorMessage`
+- `heartbeatAt`
+- lifecycle timestamps
+
+Current runtime statuses:
+
+- `PENDING`
+- `RUNNING`
+- `SUCCESS`
+- `FAILED`
+
+`Hot100AgentService.submit` now creates the durable `AgentTask` first, then submits the actual execution through `RuntimeTaskService`.
+
+Task aggregate status now distinguishes queueing from execution:
+
+- synchronous `/agent/hot100/run`: creates `AgentTask` as `RUNNING`
+- background `/agent/hot100/tasks`: creates `AgentTask` as `QUEUED`
+- when the runtime slot starts: `AgentTask` becomes `RUNNING`
+- when the loop finishes: `AgentTask` becomes `SUCCESS` or `FAILED`
+
+The `AgentTaskView` response includes `latestRuntime` and `runtimeHistory` blocks so clients can see both layers:
+
+- persisted task status, final answer, and trace steps
+- current runtime slot status and lifecycle stage
+
+One task can now have multiple runtime slots, which leaves room for retry, executor failover, heartbeat timeout checks, and per-attempt trace isolation.
+
+`AgentStep` includes `runtimeId` for background runs. This lets model/tool trace rows be grouped by a specific execution attempt instead of only by the task definition.
+
+Runtime-specific trace can be queried through:
+
+```text
+GET /agent/hot100/tasks/{taskId}/runtimes/{runtimeId}/steps
+```
+
+This keeps the s13 concept explicit: a task describes what should be done; a runtime slot describes one execution attempt.
+
 ## Todo State
 
 Todo state is stored in `AgentLoopState`.
@@ -258,4 +349,8 @@ The tests verify:
 - hooks are published without changing the main loop behavior
 - prompt sections include tools, permission levels, todos, compact summary, and messages
 - invalid model output, unknown tools, tool errors, and max-turn stops use recovery policy
+- persistent task records support dependency tracking and auto-unlock on completion
+- submitted Hot100 agent tasks expose runtime slot state for background execution
+- background agent tasks can remain `QUEUED` until their runtime slot starts
+- runtime-specific step queries return trace rows for one execution attempt
 - `Hot100AgentService.run` persists final answer and trace steps

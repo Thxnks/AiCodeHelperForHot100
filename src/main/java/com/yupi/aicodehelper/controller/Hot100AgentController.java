@@ -52,4 +52,11 @@ public class Hot100AgentController {
         Long userId = currentUserService.requireUserId();
         return BaseResponse.success(hot100AgentService.listSteps(taskId, userId));
     }
+
+    @GetMapping("/tasks/{taskId}/runtimes/{runtimeId}/steps")
+    public BaseResponse<List<AgentStepView>> listRuntimeSteps(@PathVariable String taskId,
+                                                              @PathVariable String runtimeId) {
+        Long userId = currentUserService.requireUserId();
+        return BaseResponse.success(hot100AgentService.listRuntimeSteps(taskId, runtimeId, userId));
+    }
 }
