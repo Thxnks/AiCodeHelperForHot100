@@ -175,6 +175,13 @@ export async function fetchHot100AgentTask(taskId) {
   return unwrapBusinessResponse(response.data, 'Hot100 agent task query failed')
 }
 
+export async function fetchHot100AgentTrace(taskId) {
+  const response = await apiClient.get(`/agent/hot100/tasks/${encodeURIComponent(taskId)}/trace`, {
+    timeout: 8000
+  })
+  return unwrapBusinessResponse(response.data, 'Hot100 agent trace query failed')
+}
+
 export async function fetchHot100AgentSteps(taskId) {
   const response = await apiClient.get(`/agent/hot100/tasks/${encodeURIComponent(taskId)}/steps`, {
     timeout: 8000

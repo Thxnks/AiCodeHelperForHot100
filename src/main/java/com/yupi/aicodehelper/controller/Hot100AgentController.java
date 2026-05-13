@@ -2,6 +2,7 @@ package com.yupi.aicodehelper.controller;
 
 import com.yupi.aicodehelper.agent.AgentStepView;
 import com.yupi.aicodehelper.agent.AgentTaskView;
+import com.yupi.aicodehelper.agent.AgentTraceView;
 import com.yupi.aicodehelper.agent.Hot100AgentRunRequest;
 import com.yupi.aicodehelper.agent.Hot100AgentService;
 import com.yupi.aicodehelper.auth.CurrentUserService;
@@ -58,5 +59,11 @@ public class Hot100AgentController {
                                                               @PathVariable String runtimeId) {
         Long userId = currentUserService.requireUserId();
         return BaseResponse.success(hot100AgentService.listRuntimeSteps(taskId, runtimeId, userId));
+    }
+
+    @GetMapping("/tasks/{taskId}/trace")
+    public BaseResponse<AgentTraceView> getTrace(@PathVariable String taskId) {
+        Long userId = currentUserService.requireUserId();
+        return BaseResponse.success(hot100AgentService.getTrace(taskId, userId));
     }
 }

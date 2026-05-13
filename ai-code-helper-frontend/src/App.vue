@@ -609,6 +609,7 @@ import {
   fetchHot100AgentRuntimeSteps,
   fetchHot100AgentSteps,
   fetchHot100AgentTask,
+  fetchHot100AgentTrace,
   submitHot100AgentTask,
   upsertHot100Progress
 } from './api/hot100Api.js'
@@ -1392,10 +1393,7 @@ export default {
     },
     async refreshAgentTask(taskId) {
       try {
-        const [task, steps] = await Promise.all([
-          fetchHot100AgentTask(taskId),
-          fetchHot100AgentSteps(taskId)
-        ])
+        const [task, steps] = await this.fetchAgentTaskSnapshot(taskId)
         this.agentTask = {
           ...task,
           steps
@@ -1416,6 +1414,24 @@ export default {
         }
       } catch (error) {
         console.error('Failed to refresh Hot100 agent task:', error)
+      }
+    },
+    async fetchAgentTaskSnapshot(taskId) {
+      try {
+        const trace = await fetchHot100AgentTrace(taskId)
+        const steps = Array.isArray(trace?.timeline)
+          ? trace.timeline.map((event) => event.step).filter(Boolean)
+          : []
+        return [{
+          ...trace,
+          runtimeHistory: trace?.runtimes || []
+        }, steps]
+      } catch (error) {
+        const [task, steps] = await Promise.all([
+          fetchHot100AgentTask(taskId),
+          fetchHot100AgentSteps(taskId)
+        ])
+        return [task, steps]
       }
     },
     parseKnowledgeSnippets(step) {

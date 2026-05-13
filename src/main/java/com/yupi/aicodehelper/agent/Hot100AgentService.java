@@ -20,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.UUID;
 
 @Service
@@ -122,6 +124,23 @@ public class Hot100AgentService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public AgentTraceView getTrace(String taskId, Long userId) {
+        AgentTask task = agentTaskRepository.findByUserIdAndTaskId(userId, taskId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Agent task not found"));
+        List<RuntimeSlotView> runtimes = runtimeTaskService.listByTaskId(taskId).stream()
+                .map(RuntimeSlotView::from)
+                .toList();
+        RuntimeSlotView latestRuntime = runtimeTaskService.getLatestByTaskId(taskId)
+                .map(RuntimeSlotView::from)
+                .orElse(null);
+        List<AgentStepView> steps = agentStepRepository.findByTaskIdOrderByStepOrderAsc(taskId).stream()
+                .map(AgentStepView::from)
+                .toList();
+        return AgentTraceView.from(task, latestRuntime, runtimes, buildTraceSummary(runtimes, steps),
+                buildTraceTimeline(runtimes, steps));
+    }
+
     private AgentTask createTask(Hot100AgentRunRequest request, Long userId, AgentTaskStatus status) {
         AgentTask task = new AgentTask();
         task.setTaskId(UUID.randomUUID().toString().replace("-", ""));
@@ -218,6 +237,70 @@ public class Hot100AgentService {
                 .map(RuntimeSlotView::from)
                 .toList();
         return AgentTaskView.from(task, latestRuntime, runtimeHistory, steps);
+    }
+
+    private AgentTraceSummaryView buildTraceSummary(List<RuntimeSlotView> runtimes, List<AgentStepView> steps) {
+        int failedRuntimes = (int) runtimes.stream()
+                .filter(runtime -> "FAILED".equalsIgnoreCase(runtime.status()))
+                .count();
+        int modelTurns = (int) steps.stream()
+                .filter(step -> "model_turn".equals(step.toolName()))
+                .count();
+        int toolCalls = (int) steps.stream()
+                .filter(step -> step.toolName() != null && step.toolName().startsWith("tool:"))
+                .count();
+        int failedSteps = (int) steps.stream()
+                .filter(step -> AgentStepStatus.FAILED.name().equalsIgnoreCase(step.status()))
+                .count();
+        long totalLatencyMs = steps.stream()
+                .map(AgentStepView::latencyMs)
+                .filter(latency -> latency != null)
+                .mapToLong(Long::longValue)
+                .sum();
+        return new AgentTraceSummaryView(
+                runtimes.size(),
+                failedRuntimes,
+                steps.size(),
+                modelTurns,
+                toolCalls,
+                failedSteps,
+                totalLatencyMs
+        );
+    }
+
+    private List<AgentTraceEventView> buildTraceTimeline(List<RuntimeSlotView> runtimes, List<AgentStepView> steps) {
+        List<AgentTraceEventView> events = new ArrayList<>();
+        for (RuntimeSlotView runtime : runtimes) {
+            addRuntimeEvent(events, "RUNTIME_CREATED", "Runtime created", runtime, runtime.createdAt());
+            addRuntimeEvent(events, "RUNTIME_STARTED", "Executor started", runtime, runtime.startedAt());
+            addRuntimeEvent(events, "RUNTIME_HEARTBEAT", "Heartbeat: " + nullToDefault(runtime.stage(), "unknown"),
+                    runtime, runtime.heartbeatAt());
+            addRuntimeEvent(events, "RUNTIME_FINISHED", "Runtime finished", runtime, runtime.finishedAt());
+        }
+        steps.stream()
+                .map(AgentTraceEventView::step)
+                .forEach(events::add);
+        return events.stream()
+                .sorted(Comparator
+                        .comparing(AgentTraceEventView::timestamp,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(event -> event.stepOrder() == null ? Integer.MAX_VALUE : event.stepOrder())
+                        .thenComparing(AgentTraceEventView::type))
+                .toList();
+    }
+
+    private void addRuntimeEvent(List<AgentTraceEventView> events,
+                                 String type,
+                                 String label,
+                                 RuntimeSlotView runtime,
+                                 java.time.LocalDateTime timestamp) {
+        if (timestamp != null) {
+            events.add(AgentTraceEventView.runtime(type, label, runtime, timestamp));
+        }
+    }
+
+    private String nullToDefault(String value, String defaultValue) {
+        return value == null ? defaultValue : value;
     }
 
     private String blankToNullText(String value) {

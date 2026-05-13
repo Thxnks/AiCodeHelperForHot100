@@ -210,6 +210,17 @@ class Hot100AgentServiceTest {
         assertThat(service.listRuntimeSteps(view.taskId(), view.latestRuntime().runtimeId(), 1L))
                 .extracting(AgentStepView::runtimeId)
                 .containsOnly(view.latestRuntime().runtimeId());
+        AgentTraceView trace = service.getTrace(view.taskId(), 1L);
+        assertThat(trace.taskId()).isEqualTo(view.taskId());
+        assertThat(trace.latestRuntime().runtimeId()).isEqualTo(view.latestRuntime().runtimeId());
+        assertThat(trace.runtimes()).hasSize(1);
+        assertThat(trace.summary().runtimeAttempts()).isEqualTo(1);
+        assertThat(trace.summary().totalSteps()).isEqualTo(1);
+        assertThat(trace.summary().modelTurns()).isEqualTo(1);
+        assertThat(trace.summary().toolCalls()).isZero();
+        assertThat(trace.timeline())
+                .extracting(AgentTraceEventView::type)
+                .contains("RUNTIME_CREATED", "RUNTIME_STARTED", "RUNTIME_HEARTBEAT", "RUNTIME_FINISHED", "STEP");
         assertThat(view.finalAnswer()).isEqualTo("Submitted task finished.");
     }
 
