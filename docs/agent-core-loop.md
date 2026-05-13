@@ -340,6 +340,7 @@ Core behavior is covered by:
 
 The tests verify:
 
+- Hot100 knowledge retrieval returns explainable local RAG chunks with metadata and matched terms
 - tool results flow into following model turns
 - todo state is visible after `todo_write`
 - skills can be loaded through tools

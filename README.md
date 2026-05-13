@@ -10,7 +10,7 @@ This repository is designed to demonstrate backend engineering plus AI Agent app
 
 - Backend foundation: Spring Boot 3.5, Java 21, Spring Security, JWT, JPA, Flyway, Redis, RabbitMQ, Docker Compose.
 - Agent Runtime: multi-turn loop, tool registry, tool result feedback, todo state, skills, sub-agents, compaction, permissions, hooks, recovery, task graph, background runtime slots.
-- Hot100 learning domain: progress analytics, weak-tag analysis, wrong-answer diagnosis, recommendations, study plans, problem search, and knowledge retrieval.
+- Hot100 learning domain: progress analytics, weak-tag analysis, wrong-answer diagnosis, recommendations, study plans, problem search, and explainable RAG knowledge retrieval.
 
 ## Agent Runtime Architecture
 
@@ -74,6 +74,7 @@ This makes retries and future executor failover possible: one task can have mult
 - Built-in tools: `todo_read`, `todo_write`, `list_skills`, `load_skill`, `task_create`, `task_update`, `task_get`, `task_list`
 - Hot100 tools: progress lookup, weak tags, tag mastery, wrong book, recommendation, study plan, problem detail, knowledge retrieval, guarded progress update
 - Runtime observability: `agent_task`, `runtimeHistory`, `latestRuntime`, `agent_step`
+- Explainable local RAG: Hot100 markdown/json are chunked with slug/title/section metadata, scored by matched terms, and returned through `retrieveKnowledge`
 - Recovery policy for invalid model output, unknown tools, tool handler exceptions, and max-turn stops
 - Hook events for model turns, tool calls, permission denial, compaction, and recovery
 - Sub-agent support for focused problem analysis and wrong-answer review
@@ -101,6 +102,20 @@ Agent:
 Chat:
 
 - `GET /api/ai/chat`
+
+## RAG Knowledge Retrieval
+
+`AgentKnowledgeService` provides the Hot100 Agent's `retrieveKnowledge` tool.
+
+Current baseline:
+
+- loads `hot100/markdown/*.md` and `hot100/json/*.json`
+- splits markdown by heading into section-level chunks
+- enriches chunks with problem metadata: `slug`, `title`, `difficulty`, `tags`, `pattern`, `summary`
+- returns explainable retrieval fields: `source`, `slug`, `title`, `section`, `score`, `matchedTerms`, `content`
+- keeps LangChain4j `ContentRetriever` as an optional vector-store path when configured
+
+This gives the project a deterministic local RAG baseline for tests and demos, while keeping a clear extension point for embedding/vector search.
 
 ## Tech Stack
 
@@ -148,7 +163,7 @@ npm run dev
 Run the focused Agent regression suite:
 
 ```powershell
-.\mvnw.cmd test "-Dtest=RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
+.\mvnw.cmd test "-Dtest=AgentKnowledgeServiceTest,RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
 ```
 
 Run all backend tests:
@@ -166,7 +181,7 @@ npm run build
 
 ## Resume Description
 
-Designed and implemented an AI Agent Runtime for Hot100 algorithm learning. The backend supports a multi-turn model/tool loop, backend-controlled tool registry, tool-result feedback, permission-gated write tools, local skills, sub-agents, context compaction, hook events, structured recovery, persistent task graph, background runtime slots, and per-runtime execution trace.
+Designed and implemented an AI Agent Runtime for Hot100 algorithm learning. The backend supports a multi-turn model/tool loop, backend-controlled tool registry, tool-result feedback, permission-gated write tools, local skills, sub-agents, context compaction, hook events, structured recovery, persistent task graph, background runtime slots, per-runtime execution trace, and explainable RAG retrieval.
 
 Built the Hot100 business tool layer on top of the Agent Runtime, covering progress lookup, weak-tag analysis, wrong-answer diagnosis, recommendation generation, study-plan generation, problem search, knowledge retrieval, and guarded progress updates. The system keeps model reasoning flexible while keeping execution controlled, observable, testable, and permission-aware.
 

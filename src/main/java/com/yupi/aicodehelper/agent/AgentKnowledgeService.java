@@ -1,5 +1,7 @@
 package com.yupi.aicodehelper.agent;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.rag.content.Content;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.query.Query;
@@ -14,20 +16,30 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class AgentKnowledgeService {
 
     private static final int MAX_CONTENT_LENGTH = 700;
+    private static final Pattern MARKDOWN_HEADING = Pattern.compile("^(#{1,3})\\s+(.+)$");
 
     private final ObjectProvider<ContentRetriever> contentRetrieverProvider;
+    private final ObjectMapper objectMapper;
 
-    private volatile List<LocalKnowledgeDocument> localDocuments;
+    private volatile List<KnowledgeChunk> localChunks;
 
-    public AgentKnowledgeService(ObjectProvider<ContentRetriever> contentRetrieverProvider) {
+    public AgentKnowledgeService(ObjectProvider<ContentRetriever> contentRetrieverProvider,
+                                 ObjectMapper objectMapper) {
         this.contentRetrieverProvider = contentRetrieverProvider;
+        this.objectMapper = objectMapper;
     }
 
     public List<KnowledgeSnippetView> retrieve(String query, int limit) {
@@ -36,7 +48,7 @@ public class AgentKnowledgeService {
         if (!vectorResults.isEmpty()) {
             return vectorResults;
         }
-        return retrieveWithKeywordSearch(query, realLimit);
+        return retrieveWithLocalChunks(query, realLimit);
     }
 
     private List<KnowledgeSnippetView> retrieveWithVectorStore(String query, int limit) {
@@ -63,48 +75,94 @@ public class AgentKnowledgeService {
             }
         }
         String text = content.textSegment() == null ? "" : content.textSegment().text();
-        return new KnowledgeSnippetView(source, truncate(text, MAX_CONTENT_LENGTH));
+        return new KnowledgeSnippetView(source, null, null, null, null, List.of(), truncate(text, MAX_CONTENT_LENGTH));
     }
 
-    private List<KnowledgeSnippetView> retrieveWithKeywordSearch(String query, int limit) {
+    private List<KnowledgeSnippetView> retrieveWithLocalChunks(String query, int limit) {
         List<String> terms = splitTerms(query);
         if (terms.isEmpty()) {
             return List.of();
         }
-        return localDocuments().stream()
-                .map(document -> new ScoredDocument(document, score(document.content(), terms)))
+        return localChunks().stream()
+                .map(chunk -> new ScoredChunk(chunk, score(chunk, terms), matchedTerms(chunk, terms)))
                 .filter(item -> item.score() > 0)
-                .sorted(Comparator.comparingInt(ScoredDocument::score).reversed())
+                .sorted(Comparator.comparingInt(ScoredChunk::score).reversed()
+                        .thenComparing(item -> item.chunk().source()))
                 .limit(limit)
-                .map(item -> new KnowledgeSnippetView(item.document().source(), truncate(bestWindow(item.document().content(), terms), MAX_CONTENT_LENGTH)))
+                .map(item -> toSnippet(item, terms))
                 .toList();
     }
 
-    private List<LocalKnowledgeDocument> localDocuments() {
-        List<LocalKnowledgeDocument> snapshot = localDocuments;
+    private KnowledgeSnippetView toSnippet(ScoredChunk item, List<String> terms) {
+        KnowledgeChunk chunk = item.chunk();
+        return new KnowledgeSnippetView(
+                chunk.source(),
+                chunk.slug(),
+                chunk.title(),
+                chunk.section(),
+                item.score(),
+                item.matchedTerms(),
+                truncate(bestWindow(chunk.content(), terms), MAX_CONTENT_LENGTH)
+        );
+    }
+
+    private List<KnowledgeChunk> localChunks() {
+        List<KnowledgeChunk> snapshot = localChunks;
         if (snapshot != null) {
             return snapshot;
         }
         synchronized (this) {
-            if (localDocuments == null) {
-                localDocuments = loadLocalDocuments();
+            if (localChunks == null) {
+                localChunks = loadLocalChunks();
             }
-            return localDocuments;
+            return localChunks;
         }
     }
 
-    private List<LocalKnowledgeDocument> loadLocalDocuments() {
-        List<LocalKnowledgeDocument> documents = new ArrayList<>();
-        documents.addAll(loadResources("classpath:docs/**/*.md"));
-        documents.addAll(loadResources("classpath:hot100/markdown/*.md"));
-        return documents;
+    private List<KnowledgeChunk> loadLocalChunks() {
+        Map<String, ProblemMetadata> metadataBySlug = loadProblemMetadata();
+        List<KnowledgeChunk> chunks = new ArrayList<>();
+        chunks.addAll(loadMarkdownChunks("classpath:hot100/markdown/*.md", metadataBySlug));
+        chunks.addAll(loadMarkdownChunks("classpath:docs/**/*.md", Map.of()));
+        return chunks;
     }
 
-    private List<LocalKnowledgeDocument> loadResources(String pattern) {
+    private Map<String, ProblemMetadata> loadProblemMetadata() {
+        try {
+            ResourcePatternResolver resolver = ResourcePatternUtils.getResourcePatternResolver(null);
+            Resource[] resources = resolver.getResources("classpath:hot100/json/*.json");
+            Map<String, ProblemMetadata> metadataBySlug = new LinkedHashMap<>();
+            for (Resource resource : resources) {
+                if (!resource.exists() || !resource.isReadable()) {
+                    continue;
+                }
+                try {
+                    String raw = stripBom(StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8));
+                    JsonNode root = objectMapper.readTree(raw);
+                    String slug = root.path("slug").asText(fileStem(resource.getFilename()));
+                    metadataBySlug.put(slug, new ProblemMetadata(
+                            slug,
+                            root.path("title").asText(""),
+                            root.path("difficulty").asText(""),
+                            toStringList(root.path("tags")),
+                            root.path("pattern").asText(""),
+                            root.path("summary").asText("")
+                    ));
+                } catch (Exception ignored) {
+                    // Keep the local RAG index available even if one generated problem file is malformed.
+                }
+            }
+            return metadataBySlug;
+        } catch (IOException e) {
+            return Map.of();
+        }
+    }
+
+    private List<KnowledgeChunk> loadMarkdownChunks(String pattern, Map<String, ProblemMetadata> metadataBySlug) {
         try {
             ResourcePatternResolver resolver = ResourcePatternUtils.getResourcePatternResolver(null);
             Resource[] resources = resolver.getResources(pattern);
-            List<LocalKnowledgeDocument> documents = new ArrayList<>();
+            List<KnowledgeChunk> chunks = new ArrayList<>();
             for (Resource resource : resources) {
                 if (!resource.exists() || !resource.isReadable()) {
                     continue;
@@ -113,15 +171,66 @@ public class AgentKnowledgeService {
                 if (filename == null || filename.isBlank()) {
                     continue;
                 }
-                String content = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
+                String content = stripBom(StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8));
                 if (!content.isBlank()) {
-                    documents.add(new LocalKnowledgeDocument(filename, content));
+                    chunks.addAll(splitMarkdown(filename, content, metadataBySlug.get(fileStem(filename))));
                 }
             }
-            return documents;
+            return chunks;
         } catch (IOException e) {
             return List.of();
         }
+    }
+
+    private List<KnowledgeChunk> splitMarkdown(String filename, String markdown, ProblemMetadata metadata) {
+        List<KnowledgeChunk> chunks = new ArrayList<>();
+        String slug = metadata == null ? fileStem(filename) : metadata.slug();
+        String title = metadata == null ? "" : metadata.title();
+        String section = "document";
+        StringBuilder sectionContent = new StringBuilder();
+        int chunkIndex = 1;
+        for (String line : markdown.split("\\R")) {
+            Matcher matcher = MARKDOWN_HEADING.matcher(line);
+            if (matcher.matches()) {
+                chunkIndex = flushChunk(chunks, filename, slug, title, section, sectionContent, metadata, chunkIndex);
+                section = matcher.group(2).trim();
+            }
+            sectionContent.append(line).append('\n');
+        }
+        flushChunk(chunks, filename, slug, title, section, sectionContent, metadata, chunkIndex);
+        return chunks;
+    }
+
+    private int flushChunk(List<KnowledgeChunk> chunks,
+                           String filename,
+                           String slug,
+                           String title,
+                           String section,
+                           StringBuilder sectionContent,
+                           ProblemMetadata metadata,
+                           int chunkIndex) {
+        String content = sectionContent.toString().trim();
+        sectionContent.setLength(0);
+        if (content.isBlank()) {
+            return chunkIndex;
+        }
+        String metadataText = metadata == null ? "" : """
+                title: %s
+                difficulty: %s
+                tags: %s
+                pattern: %s
+                summary: %s
+                """.formatted(metadata.title(), metadata.difficulty(), String.join(" ", metadata.tags()),
+                metadata.pattern(), metadata.summary()).trim();
+        String searchableContent = metadataText.isBlank() ? content : metadataText + "\n\n" + content;
+        chunks.add(new KnowledgeChunk(
+                filename + "#" + chunkIndex,
+                slug,
+                title,
+                section,
+                searchableContent
+        ));
+        return chunkIndex + 1;
     }
 
     private List<String> splitTerms(String query) {
@@ -133,18 +242,48 @@ public class AgentKnowledgeService {
                 terms.add(term);
             }
         }
-        return terms;
+        return terms.stream().distinct().toList();
     }
 
-    private int score(String content, List<String> terms) {
-        String normalized = content.toLowerCase(Locale.ROOT);
+    private int score(KnowledgeChunk chunk, List<String> terms) {
+        String normalized = chunk.content().toLowerCase(Locale.ROOT);
+        String normalizedSection = chunk.section().toLowerCase(Locale.ROOT);
+        String normalizedTitle = chunk.title().toLowerCase(Locale.ROOT);
+        String normalizedSlug = chunk.slug().toLowerCase(Locale.ROOT);
         int score = 0;
         for (String term : terms) {
-            int index = normalized.indexOf(term);
-            while (index >= 0) {
-                score++;
-                index = normalized.indexOf(term, index + term.length());
+            int occurrences = countOccurrences(normalized, term);
+            score += occurrences;
+            if (normalizedTitle.contains(term) || normalizedSlug.contains(term)) {
+                score += 8;
             }
+            if (normalizedSection.contains(term)) {
+                score += 4;
+            }
+        }
+        return score;
+    }
+
+    private List<String> matchedTerms(KnowledgeChunk chunk, List<String> terms) {
+        String normalized = chunk.content().toLowerCase(Locale.ROOT);
+        Set<String> matched = new LinkedHashSet<>();
+        for (String term : terms) {
+            if (normalized.contains(term)
+                    || chunk.title().toLowerCase(Locale.ROOT).contains(term)
+                    || chunk.slug().toLowerCase(Locale.ROOT).contains(term)
+                    || chunk.section().toLowerCase(Locale.ROOT).contains(term)) {
+                matched.add(term);
+            }
+        }
+        return List.copyOf(matched);
+    }
+
+    private int countOccurrences(String content, String term) {
+        int score = 0;
+        int index = content.indexOf(term);
+        while (index >= 0) {
+            score++;
+            index = content.indexOf(term, index + term.length());
         }
         return score;
     }
@@ -164,6 +303,35 @@ public class AgentKnowledgeService {
         return content.substring(start, end).trim();
     }
 
+    private List<String> toStringList(JsonNode node) {
+        if (node == null || !node.isArray()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        for (JsonNode item : node) {
+            String value = item.asText("");
+            if (!value.isBlank()) {
+                values.add(value);
+            }
+        }
+        return values;
+    }
+
+    private String fileStem(String filename) {
+        if (filename == null) {
+            return "";
+        }
+        int index = filename.lastIndexOf('.');
+        return index <= 0 ? filename : filename.substring(0, index);
+    }
+
+    private String stripBom(String value) {
+        if (value != null && !value.isEmpty() && value.charAt(0) == '\uFEFF') {
+            return value.substring(1);
+        }
+        return value;
+    }
+
     private String truncate(String value, int maxLength) {
         if (value == null || value.length() <= maxLength) {
             return value;
@@ -171,9 +339,21 @@ public class AgentKnowledgeService {
         return value.substring(0, maxLength);
     }
 
-    private record LocalKnowledgeDocument(String source, String content) {
+    private record ProblemMetadata(String slug,
+                                   String title,
+                                   String difficulty,
+                                   List<String> tags,
+                                   String pattern,
+                                   String summary) {
     }
 
-    private record ScoredDocument(LocalKnowledgeDocument document, int score) {
+    private record KnowledgeChunk(String source,
+                                  String slug,
+                                  String title,
+                                  String section,
+                                  String content) {
+    }
+
+    private record ScoredChunk(KnowledgeChunk chunk, int score, List<String> matchedTerms) {
     }
 }

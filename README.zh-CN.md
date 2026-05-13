@@ -10,7 +10,7 @@ AI Code Helper 是一个面向 Hot100 算法学习场景的 Spring Boot Agent Ru
 
 - 后端基础：Spring Boot 3.5、Java 21、Spring Security、JWT、JPA、Flyway、Redis、RabbitMQ、Docker Compose。
 - Agent Runtime：多轮循环、工具注册表、工具结果回灌、todo 状态、skills、sub-agent、上下文压缩、权限控制、hook、recovery、任务图、后台运行槽位。
-- Hot100 业务场景：学习进度、薄弱标签、错因诊断、个性化推荐、学习计划、题目搜索、知识检索。
+- Hot100 业务场景：学习进度、薄弱标签、错因诊断、个性化推荐、学习计划、题目搜索、可解释 RAG 知识检索。
 
 ## Agent Runtime 架构
 
@@ -74,6 +74,7 @@ POST /agent/hot100/tasks
 - 内置工具：`todo_read`、`todo_write`、`list_skills`、`load_skill`、`task_create`、`task_update`、`task_get`、`task_list`
 - Hot100 工具：进度查询、薄弱标签、标签掌握度、错题本、推荐、学习计划、题目详情、知识检索、受控进度更新
 - 运行时可观测：`agent_task`、`latestRuntime`、`runtimeHistory`、`agent_step`
+- 可解释本地 RAG：对 Hot100 markdown/json 做 chunk，带 `slug/title/section` 元数据、匹配词和分数，并通过 `retrieveKnowledge` 返回
 - recovery：非法模型输出、未知工具、工具异常、最大轮次终止
 - hook：模型轮次、工具调用、权限拒绝、上下文压缩、recovery
 - sub-agent：用于单题分析和错因复盘
@@ -101,6 +102,20 @@ Agent：
 Chat：
 
 - `GET /api/ai/chat`
+
+## RAG 知识检索
+
+`AgentKnowledgeService` 为 Hot100 Agent 提供 `retrieveKnowledge` 工具。
+
+当前基线能力：
+
+- 加载 `hot100/markdown/*.md` 和 `hot100/json/*.json`
+- 按 Markdown 标题切分 section 级 chunk
+- 为 chunk 补充题目元数据：`slug`、`title`、`difficulty`、`tags`、`pattern`、`summary`
+- 返回可解释检索字段：`source`、`slug`、`title`、`section`、`score`、`matchedTerms`、`content`
+- 保留 LangChain4j `ContentRetriever` 作为后续接入向量库的扩展点
+
+这让项目在没有外部向量库的情况下也有稳定可测的本地 RAG 基线，同时后续可以平滑升级到 embedding / vector search。
 
 ## 技术栈
 
@@ -148,7 +163,7 @@ npm run dev
 运行 Agent 核心回归测试：
 
 ```powershell
-.\mvnw.cmd test "-Dtest=RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
+.\mvnw.cmd test "-Dtest=AgentKnowledgeServiceTest,RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
 ```
 
 运行全部后端测试：
@@ -166,9 +181,9 @@ npm run build
 
 ## 简历描述
 
-设计并实现面向 Hot100 算法学习场景的 AI Agent Runtime。后端支持多轮 model/tool 循环、受控工具注册表、工具结果回灌、写工具权限控制、本地 skills、sub-agent、上下文压缩、hook 事件、结构化 recovery、持久任务图、后台运行槽位和按 runtime 隔离的执行轨迹。
+设计并实现面向 Hot100 算法学习场景的 AI Agent Runtime。后端支持多轮 model/tool 循环、受控工具注册表、工具结果回灌、写工具权限控制、本地 skills、sub-agent、上下文压缩、hook 事件、结构化 recovery、持久任务图、后台运行槽位、按 runtime 隔离的执行轨迹和可解释 RAG 检索。
 
-在 Agent Runtime 之上构建 Hot100 业务工具层，覆盖进度查询、薄弱标签分析、错因诊断、个性化推荐、学习计划生成、题目搜索、知识检索和受控进度更新。系统让模型推理保持灵活，同时保证执行过程可控、可观测、可测试、权限安全。
+在 Agent Runtime 之上构建 Hot100 业务工具层，覆盖进度查询、薄弱标签分析、错因诊断、个性化推荐、学习计划生成、题目搜索、RAG 知识检索和受控进度更新。系统让模型推理保持灵活，同时保证执行过程可控、可观测、可测试、权限安全。
 
 ## 项目结构
 
