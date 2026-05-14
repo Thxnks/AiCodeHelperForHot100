@@ -1,6 +1,5 @@
 package com.yupi.aicodehelper.ai;
 
-import com.alibaba.dashscope.assistants.Assistant;
 import com.yupi.aicodehelper.ai.tools.Hot100Tool;
 import com.yupi.aicodehelper.ai.tools.InterviewQuestionTool;
 import dev.langchain4j.data.document.Document;

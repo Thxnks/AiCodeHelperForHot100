@@ -2,44 +2,50 @@
 
 [中文文档](./README.zh-CN.md)
 
-AI Code Helper is a Spring Boot based Agent Runtime project for Hot100 algorithm learning. It is not a thin LLM API wrapper: the backend controls tool execution, permissions, task runtime slots, trace persistence, and recovery while the model decides the next reasoning step through structured `tool_use` JSON.
+AI Code Helper For Hot100 is a Spring Boot and Vue based AI learning assistant for algorithm practice and backend interview preparation. The project focuses on the Hot100 practice workflow: problem browsing, progress tracking, wrong-answer analysis, personalized recommendations, study plans, streaming AI coaching, and a backend-controlled Agent Runtime.
 
-## Project Positioning
+The project is not positioned as a production SaaS platform. It is a practical backend project that demonstrates how to combine traditional business systems with LLM-driven Agent execution while keeping tool calls observable, permission-aware, and testable.
 
-This repository is designed to demonstrate backend engineering plus AI Agent application development:
+## Highlights
 
-- Backend foundation: Spring Boot 3.5, Java 21, Spring Security, JWT, JPA, Flyway, Redis, RabbitMQ, Docker Compose.
-- Agent Runtime: multi-turn loop, tool registry, tool result feedback, todo state, long-term memory, skills, sub-agents, compaction, permissions, hooks, recovery, task graph, background runtime slots.
-- Hot100 learning domain: progress analytics, weak-tag analysis, wrong-answer diagnosis, recommendations, study plans, problem search, and explainable RAG knowledge retrieval.
+- User system with JWT authentication, refresh tokens, logout, and current-user APIs.
+- Hot100 learning workflow with problem search, progress records, wrong book, weak-tag analysis, tag mastery, recommendations, and study plans.
+- AI wrong-answer analysis that converts user code and error descriptions into structured feedback, weak knowledge points, and next actions.
+- Streaming AI chat with role cards, solving modes, current-problem context, user learning profile, and optional MCP capability notice.
+- Hand-built Agent Runtime with model/tool loop, backend tool registry, permission gate, runtime task slots, execution trace, recovery policy, hooks, long-term memory, skills, and sub-agent support.
+- Explainable local RAG for Hot100 knowledge retrieval, based on markdown/json resources with source, slug, section, score, and matched terms.
+- Backend engineering foundation with Spring Boot 3.5, Java 21, Spring Security, JPA, Flyway, MySQL, Redis fallback, RabbitMQ configuration, Docker Compose, and regression tests.
 
-## Agent Runtime Architecture
+## Architecture
 
 ```text
-User Goal
-  -> AgentTask
-  -> RuntimeSlot
-  -> AgentLoopService
-       -> AgentPromptBuilder
-       -> model turn
-       -> tool_use JSON
-       -> AgentPermissionGate
-       -> AgentToolRegistry
-       -> Java tool handler
-       -> tool_result message
-       -> next model turn
-       -> final_answer
-  -> AgentStep trace
+Frontend (Vue 3)
+  -> REST / SSE APIs
+  -> Spring Boot Backend
+       -> Auth / Chat / Hot100 / Agent Controllers
+       -> Domain Services
+       -> Agent Runtime
+            -> AgentPromptBuilder
+            -> Model turn
+            -> tool_use JSON
+            -> AgentPermissionGate
+            -> AgentToolRegistry
+            -> Java tool handler
+            -> tool_result
+            -> next model turn or final_answer
+       -> JPA Repositories
+  -> MySQL / Redis / RabbitMQ
 ```
 
-The model is allowed to choose tools, but it cannot execute arbitrary code. Every tool must be registered by the backend with a name, description, permission level, and Java handler.
+The model can decide which registered tool to call, but actual execution stays inside the backend. Each tool has a name, description, permission level, and Java handler, so model reasoning remains flexible while system behavior remains controlled.
 
-## Task Runtime Model
+## Agent Runtime
 
-The project separates task definition from runtime execution attempts:
+The Agent module is built around a persistent task model:
 
 ```text
 AgentTask
-  taskId, userId, goal, aggregate status, finalAnswer
+  taskId, userId, goal, status, finalAnswer
       |
       | 1:N
       v
@@ -49,108 +55,97 @@ RuntimeSlot
       | 1:N
       v
 AgentStep
-  runtimeId, stepOrder, model/tool input, output, status, latency
+  runtimeId, stepOrder, toolName, input, output, status, latencyMs
 ```
 
-Status flow:
+This design separates a user goal from one or more execution attempts. It makes retries, runtime trace inspection, and future executor failover easier to support.
 
-```text
-POST /agent/hot100/tasks
-  -> AgentTask QUEUED
-  -> RuntimeSlot PENDING
-  -> RuntimeSlot RUNNING
-  -> AgentTask RUNNING
-  -> model_turn / tool_call trace rows
-  -> RuntimeSlot SUCCESS or FAILED
-  -> AgentTask SUCCESS or FAILED
-```
+Current Agent capabilities include:
 
-This makes retries and future executor failover possible: one task can have multiple runtime slots, and each slot owns its own trace rows.
-
-## Agent Capabilities
-
-- ReAct-style loop: `messages -> model -> tool_use -> tool_result -> next model turn -> final_answer`
-- Tool registry with permission levels: `READ`, `WRITE`, `EXTERNAL`, `SENSITIVE`
-- Built-in tools: `todo_read`, `todo_write`, `list_skills`, `load_skill`, `task_create`, `task_update`, `task_get`, `task_list`
-- Hot100 tools: progress lookup, weak tags, tag mastery, wrong book, recommendation, study plan, problem detail, knowledge retrieval, guarded progress update
-- Runtime observability: `agent_task`, `runtimeHistory`, `latestRuntime`, `agent_step`
-- Explainable local RAG: Hot100 markdown/json are chunked with slug/title/section metadata, scored by matched terms, and returned through `retrieveKnowledge`
-- Long-term memory: wrong-answer patterns, weak knowledge points, notes, and next actions are persisted as user memories and exposed through `memory_recall`, `memory_profile`, and `memory_save`
-- Recovery policy for invalid model output, unknown tools, tool handler exceptions, and max-turn stops
+- ReAct-style loop: `messages -> model -> tool_use -> tool_result -> final_answer`
+- Tool permissions: `READ`, `WRITE`, `EXTERNAL`, `SENSITIVE`
+- Runtime trace persistence through `AgentStep`
+- Invalid output, unknown tool, tool exception, and max-turn recovery
 - Hook events for model turns, tool calls, permission denial, compaction, and recovery
-- Sub-agent support for focused problem analysis and wrong-answer review
+- Long-term user memory for weaknesses, wrong-answer patterns, notes, and next actions
+- Skill loading and focused sub-agent execution
+- Runtime task slots with status, progress, heartbeat, and per-runtime step history
+
+## Hot100 Domain Features
+
+- Browse and filter Hot100 problems by keyword, tag, and difficulty.
+- View problem details, patterns, core ideas, complexity, pitfalls, and markdown notes.
+- Save learning progress with notes, wrong reasons, weak knowledge points, AI feedback, and next actions.
+- Maintain a wrong book and generate wrong-answer analysis.
+- Compute weak tags and tag mastery from progress records.
+- Generate recommendation lists and study plans.
+- Run a Hot100 Agent task and inspect model/tool execution traces.
+
+## AI and RAG
+
+`AgentKnowledgeService` provides the Agent's `retrieveKnowledge` tool.
+
+The current retrieval baseline:
+
+- loads `src/main/resources/hot100/markdown/*.md`
+- loads `src/main/resources/hot100/json/*.json`
+- splits markdown into section-level chunks
+- enriches chunks with problem metadata such as slug, title, difficulty, tags, pattern, and summary
+- returns explainable retrieval fields: source, slug, title, section, score, matched terms, and content
+- keeps LangChain4j `ContentRetriever` as an optional extension point for vector retrieval
+
+This gives the project a deterministic local RAG path for tests and demos, while leaving room for embedding-based search.
 
 ## Main APIs
+
+Auth:
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+Chat:
+
+- `GET /api/ai/chat` - SSE streaming chat
 
 Hot100:
 
 - `GET /api/hot100/problems`
 - `GET /api/hot100/problems/{slug}`
 - `POST /api/hot100/progress`
+- `GET /api/hot100/progress`
+- `GET /api/hot100/weak-tags`
 - `GET /api/hot100/tag-mastery`
-- `GET /api/hot100/wrong-book/analysis`
+- `GET /api/hot100/wrong-book`
 - `POST /api/hot100/wrong-book/analyze`
-- `GET /api/hot100/ai-recommendations`
+- `GET /api/hot100/recommendations`
+- `GET /api/hot100/study-plan`
 
 Agent:
 
-- `GET /api/agent/memory`
-- `GET /api/agent/memory/profile`
-- `POST /api/agent/memory`
-- `POST /api/agent/hot100/run`
 - `POST /api/agent/hot100/tasks`
 - `GET /api/agent/hot100/tasks/{taskId}`
+- `GET /api/agent/hot100/tasks/{taskId}/trace`
 - `GET /api/agent/hot100/tasks/{taskId}/steps`
 - `GET /api/agent/hot100/tasks/{taskId}/runtimes/{runtimeId}/steps`
-
-Chat:
-
-- `GET /api/ai/chat`
-
-## RAG Knowledge Retrieval
-
-`AgentKnowledgeService` provides the Hot100 Agent's `retrieveKnowledge` tool.
-
-Current baseline:
-
-- loads `hot100/markdown/*.md` and `hot100/json/*.json`
-- splits markdown by heading into section-level chunks
-- enriches chunks with problem metadata: `slug`, `title`, `difficulty`, `tags`, `pattern`, `summary`
-- returns explainable retrieval fields: `source`, `slug`, `title`, `section`, `score`, `matchedTerms`, `content`
-- keeps LangChain4j `ContentRetriever` as an optional vector-store path when configured
-
-This gives the project a deterministic local RAG baseline for tests and demos, while keeping a clear extension point for embedding/vector search.
-
-## Agent Memory
-
-`AgentMemoryService` provides long-term user memory for personalization.
-
-Memory records include:
-
-- `type`: `USER_PREFERENCE`, `WEAKNESS`, `WRONG_ANSWER`, `NEXT_ACTION`, `NOTE`
-- `scope`: usually `hot100`
-- `subject`: problem slug or topic
-- `content`: durable memory text
-- `importance`: 1-10
-- `source`: `agent`, `progress`, or another producer
-
-The Hot100 progress and wrong-answer analysis flows automatically write memories for notes, weak knowledge points, wrong-answer patterns, and next actions. The Agent can recall them through `memory_recall` and summarize the profile through `memory_profile`.
-
-Memory can also be inspected or written through REST APIs:
-
-- `GET /api/agent/memory?query=dp&limit=10`
+- `GET /api/agent/memory`
 - `GET /api/agent/memory/profile`
 - `POST /api/agent/memory`
 
 ## Tech Stack
 
-- Backend: `Java 21`, `Spring Boot 3.5`, `Spring Security`, `Spring Data JPA`, `Flyway`
-- AI: `LangChain4j`, `DashScope/Qwen`
-- Frontend: `Vue 3`, `Vite`, `Axios`, `SSE`
-- Storage and middleware: `MySQL 8`, `Redis`, `RabbitMQ`
-- Deployment: `Docker`, `Docker Compose`
+- Backend: Java 21, Spring Boot 3.5, Spring Security, Spring Data JPA, Bean Validation, Actuator
+- AI: LangChain4j, DashScope/Qwen, SSE streaming, optional MCP integration
+- Data: MySQL 8, Flyway, Redis cache with local fallback
+- Frontend: Vue 3, Vite, Axios
+- DevOps: Docker, Docker Compose, Maven Wrapper
+- Testing: JUnit 5, Spring Boot Test, focused Agent and API smoke tests
 
 ## Quick Start
+
+Create environment files:
 
 ```powershell
 Copy-Item .env.example .env
@@ -161,21 +156,22 @@ Configure at least:
 
 - `DASHSCOPE_API_KEY`
 - `APP_AUTH_JWT_SECRET`
-- MySQL / Redis / RabbitMQ connection settings
+- MySQL connection settings
+- Redis and RabbitMQ settings if you use the full compose stack
 
-Start with Docker:
+Start infrastructure and application with Docker:
 
 ```bash
 docker compose up -d --build
 ```
 
-Local backend:
+Run backend locally:
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-Local frontend:
+Run frontend locally:
 
 ```powershell
 cd ai-code-helper-frontend
@@ -185,16 +181,16 @@ npm run dev
 
 ## Verification
 
-Run the focused Agent regression suite:
-
-```powershell
-.\mvnw.cmd test "-Dtest=AgentMemoryServiceTest,AgentKnowledgeServiceTest,RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
-```
-
 Run all backend tests:
 
 ```powershell
 .\mvnw.cmd test
+```
+
+Run focused Agent tests:
+
+```powershell
+.\mvnw.cmd test "-Dtest=AgentMemoryServiceTest,AgentKnowledgeServiceTest,RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
 ```
 
 Build frontend:
@@ -204,11 +200,11 @@ cd ai-code-helper-frontend
 npm run build
 ```
 
-## Resume Description
+## Resume Summary
 
-Designed and implemented an AI Agent Runtime for Hot100 algorithm learning. The backend supports a multi-turn model/tool loop, backend-controlled tool registry, tool-result feedback, permission-gated write tools, long-term memory, local skills, sub-agents, context compaction, hook events, structured recovery, persistent task graph, background runtime slots, per-runtime execution trace, and explainable RAG retrieval.
+Built an AI learning assistant for Hot100 algorithm practice with Spring Boot and Vue. The backend implements JWT authentication, Hot100 learning progress, wrong-answer analysis, weak-tag analytics, recommendation and study-plan workflows, streaming AI chat, and a custom Agent Runtime.
 
-Built the Hot100 business tool layer on top of the Agent Runtime, covering progress lookup, weak-tag analysis, wrong-answer diagnosis, recommendation generation, study-plan generation, problem search, knowledge retrieval, and guarded progress updates. The system keeps model reasoning flexible while keeping execution controlled, observable, testable, and permission-aware.
+Designed the Agent Runtime with a backend-controlled tool registry, permission-gated tool execution, runtime slots, persistent step traces, recovery policies, long-term memory, skill loading, and explainable local RAG retrieval. This keeps LLM reasoning flexible while keeping execution observable, testable, and controlled by backend services.
 
 ## Project Structure
 
@@ -220,23 +216,24 @@ Built the Hot100 business tool layer on top of the Agent Runtime, covering progr
 |   |   |-- core/
 |   |   |-- Hot100AgentService.java
 |   |   `-- Hot100AgentToolRegistry.java
-|   |-- controller/
-|   |-- hot100/
 |   |-- ai/
 |   |-- auth/
+|   |-- chat/
+|   |-- controller/
+|   |-- hot100/
 |   |-- entity/
 |   `-- repository/
 |-- src/main/resources/
 |   |-- db/migration/
 |   |-- hot100/json/
 |   |-- hot100/markdown/
-|   `-- skills/
+|   |-- skills/
+|   `-- system-prompt-role.txt
 |-- docs/
-|   `-- agent-core-loop.md
 |-- docker-compose.yml
 `-- README.md
 ```
 
-## Notes
+## Security Notes
 
-Do not commit real API keys, database passwords, or production secrets. Local runtime files such as `.env` and data directories are ignored by `.gitignore`.
+Do not commit real API keys, database passwords, JWT secrets, or production credentials. Local `.env` files and runtime data directories should stay outside version control.

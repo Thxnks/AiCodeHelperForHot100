@@ -2,44 +2,50 @@
 
 [English](./README.md)
 
-AI Code Helper 是一个面向 Hot100 算法学习场景的 Spring Boot Agent Runtime 项目。它不是简单的大模型 API 包装，而是由后端控制工具调用、权限、后台运行槽位、执行轨迹和异常恢复，让模型通过结构化 `tool_use` JSON 决定下一步推理。
+AI Code Helper For Hot100 是一个基于 Spring Boot 和 Vue 的 AI 学习助手，面向 Hot100 算法刷题和后端面试准备场景。项目覆盖题库浏览、学习进度、错题分析、个性化推荐、学习计划、流式 AI 辅导，以及由后端控制执行的 Agent Runtime。
 
-## 项目定位
+这个项目不是简单的大模型 API 包装，也不包装成成熟商业 SaaS。它的定位是一个有完整业务闭环和工程深度的后端实习项目，用来展示传统后端业务系统如何和 LLM Agent 能力结合，同时保证工具调用可观测、可控、可测试。
 
-这个项目适合用于展示后端工程能力和 AI Agent 应用开发能力：
+## 项目亮点
 
-- 后端基础：Spring Boot 3.5、Java 21、Spring Security、JWT、JPA、Flyway、Redis、RabbitMQ、Docker Compose。
-- Agent Runtime：多轮循环、工具注册表、工具结果回灌、todo 状态、长期记忆、skills、sub-agent、上下文压缩、权限控制、hook、recovery、任务图、后台运行槽位。
-- Hot100 业务场景：学习进度、薄弱标签、错因诊断、个性化推荐、学习计划、题目搜索、可解释 RAG 知识检索。
+- 用户系统：支持 JWT 登录注册、刷新 token、登出、当前用户信息查询。
+- Hot100 学习闭环：题目检索、学习进度、错题本、薄弱标签、标签掌握度、推荐题单、学习计划。
+- AI 错题分析：结合用户代码和错误描述，生成结构化错因、薄弱知识点、AI 建议和下一步行动。
+- 流式 AI 对话：支持角色卡、解题模式、当前题目上下文、用户学习画像和 MCP 能力提示。
+- 手搓 Agent Runtime：支持 model/tool 循环、后端工具注册表、权限门控、后台任务运行槽、执行 trace、异常恢复、hook、长期记忆、skills 和 sub-agent。
+- 可解释本地 RAG：基于 Hot100 markdown/json 资源构建知识检索，返回来源、题目、章节、分数和命中词。
+- 后端工程基础：Spring Boot 3.5、Java 21、Spring Security、JPA、Flyway、MySQL、Redis fallback、RabbitMQ 配置、Docker Compose 和回归测试。
 
-## Agent Runtime 架构
+## 整体架构
 
 ```text
-User Goal
-  -> AgentTask
-  -> RuntimeSlot
-  -> AgentLoopService
-       -> AgentPromptBuilder
-       -> model turn
-       -> tool_use JSON
-       -> AgentPermissionGate
-       -> AgentToolRegistry
-       -> Java tool handler
-       -> tool_result message
-       -> next model turn
-       -> final_answer
-  -> AgentStep trace
+Frontend (Vue 3)
+  -> REST / SSE APIs
+  -> Spring Boot Backend
+       -> Auth / Chat / Hot100 / Agent Controllers
+       -> Domain Services
+       -> Agent Runtime
+            -> AgentPromptBuilder
+            -> Model turn
+            -> tool_use JSON
+            -> AgentPermissionGate
+            -> AgentToolRegistry
+            -> Java tool handler
+            -> tool_result
+            -> next model turn or final_answer
+       -> JPA Repositories
+  -> MySQL / Redis / RabbitMQ
 ```
 
-模型可以选择工具，但不能任意执行代码。每个工具都必须由后端注册，包含工具名、描述、权限级别和 Java handler。
+模型可以决定调用哪个已注册工具，但真正的执行权在后端。每个工具都有名称、描述、权限等级和 Java handler，因此模型负责推理，系统负责受控执行。
 
-## 任务运行模型
+## Agent Runtime
 
-项目把“任务定义”和“运行尝试”拆开：
+Agent 模块围绕持久化任务模型设计：
 
 ```text
 AgentTask
-  taskId, userId, goal, aggregate status, finalAnswer
+  taskId, userId, goal, status, finalAnswer
       |
       | 1:N
       v
@@ -49,108 +55,97 @@ RuntimeSlot
       | 1:N
       v
 AgentStep
-  runtimeId, stepOrder, model/tool input, output, status, latency
+  runtimeId, stepOrder, toolName, input, output, status, latencyMs
 ```
 
-后台任务状态流转：
+这个设计把“用户目标”和“具体执行尝试”拆开，同一个任务后续可以支持重试、多执行器接管和按 runtime 查看独立 trace。
 
-```text
-POST /agent/hot100/tasks
-  -> AgentTask QUEUED
-  -> RuntimeSlot PENDING
-  -> RuntimeSlot RUNNING
-  -> AgentTask RUNNING
-  -> model_turn / tool_call trace rows
-  -> RuntimeSlot SUCCESS or FAILED
-  -> AgentTask SUCCESS or FAILED
-```
+当前 Agent 能力包括：
 
-这样同一个任务后续可以支持多次执行、重试、executor failover，并且每次执行都有独立 trace。
+- ReAct 风格循环：`messages -> model -> tool_use -> tool_result -> final_answer`
+- 工具权限等级：`READ`、`WRITE`、`EXTERNAL`、`SENSITIVE`
+- 通过 `AgentStep` 持久化模型输出、工具输入输出、状态和耗时
+- 对非法模型输出、未知工具、工具异常、最大轮次停止做恢复处理
+- hook 事件：模型轮次、工具调用、权限拒绝、上下文压缩、异常恢复
+- 长期用户记忆：记录薄弱点、错因模式、笔记和下一步行动
+- skill 加载和 focused sub-agent 执行
+- 后台运行槽：记录状态、阶段、进度、心跳和每次运行的 step 历史
 
-## Agent 能力
+## Hot100 业务能力
 
-- ReAct 风格循环：`messages -> model -> tool_use -> tool_result -> next model turn -> final_answer`
-- 工具权限级别：`READ`、`WRITE`、`EXTERNAL`、`SENSITIVE`
-- 内置工具：`todo_read`、`todo_write`、`list_skills`、`load_skill`、`task_create`、`task_update`、`task_get`、`task_list`
-- Hot100 工具：进度查询、薄弱标签、标签掌握度、错题本、推荐、学习计划、题目详情、知识检索、受控进度更新
-- 运行时可观测：`agent_task`、`latestRuntime`、`runtimeHistory`、`agent_step`
-- 可解释本地 RAG：对 Hot100 markdown/json 做 chunk，带 `slug/title/section` 元数据、匹配词和分数，并通过 `retrieveKnowledge` 返回
-- 长期记忆：把错因模式、薄弱知识点、笔记和下一步行动持久化为用户记忆，并通过 `memory_recall`、`memory_profile`、`memory_save` 暴露给 Agent
-- recovery：非法模型输出、未知工具、工具异常、最大轮次终止
-- hook：模型轮次、工具调用、权限拒绝、上下文压缩、recovery
-- sub-agent：用于单题分析和错因复盘
+- 按关键词、标签、难度筛选 Hot100 题目。
+- 查看题目详情、解题模式、核心思路、复杂度、常见错误和 markdown 笔记。
+- 保存学习进度、笔记、错因、薄弱知识点、AI 反馈和下一步行动。
+- 维护错题本并生成错题分析。
+- 根据做题记录计算薄弱标签和标签掌握度。
+- 生成推荐题单和学习计划。
+- 提交 Hot100 Agent 任务，并查看模型和工具调用 trace。
+
+## AI 与 RAG
+
+`AgentKnowledgeService` 为 Agent 提供 `retrieveKnowledge` 工具。
+
+当前检索基线：
+
+- 加载 `src/main/resources/hot100/markdown/*.md`
+- 加载 `src/main/resources/hot100/json/*.json`
+- 按 markdown 标题切分章节级 chunk
+- 为 chunk 补充题目元数据：slug、title、difficulty、tags、pattern、summary
+- 返回可解释字段：source、slug、title、section、score、matchedTerms、content
+- 保留 LangChain4j `ContentRetriever` 作为后续接入向量检索的扩展点
+
+这样项目在没有外部向量库时也有稳定可测的本地 RAG 能力，后续也可以平滑升级到 embedding / vector search。
 
 ## 核心接口
+
+认证：
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+聊天：
+
+- `GET /api/ai/chat` - SSE 流式聊天
 
 Hot100：
 
 - `GET /api/hot100/problems`
 - `GET /api/hot100/problems/{slug}`
 - `POST /api/hot100/progress`
+- `GET /api/hot100/progress`
+- `GET /api/hot100/weak-tags`
 - `GET /api/hot100/tag-mastery`
-- `GET /api/hot100/wrong-book/analysis`
+- `GET /api/hot100/wrong-book`
 - `POST /api/hot100/wrong-book/analyze`
-- `GET /api/hot100/ai-recommendations`
+- `GET /api/hot100/recommendations`
+- `GET /api/hot100/study-plan`
 
 Agent：
 
-- `GET /api/agent/memory`
-- `GET /api/agent/memory/profile`
-- `POST /api/agent/memory`
-- `POST /api/agent/hot100/run`
 - `POST /api/agent/hot100/tasks`
 - `GET /api/agent/hot100/tasks/{taskId}`
+- `GET /api/agent/hot100/tasks/{taskId}/trace`
 - `GET /api/agent/hot100/tasks/{taskId}/steps`
 - `GET /api/agent/hot100/tasks/{taskId}/runtimes/{runtimeId}/steps`
-
-Chat：
-
-- `GET /api/ai/chat`
-
-## RAG 知识检索
-
-`AgentKnowledgeService` 为 Hot100 Agent 提供 `retrieveKnowledge` 工具。
-
-当前基线能力：
-
-- 加载 `hot100/markdown/*.md` 和 `hot100/json/*.json`
-- 按 Markdown 标题切分 section 级 chunk
-- 为 chunk 补充题目元数据：`slug`、`title`、`difficulty`、`tags`、`pattern`、`summary`
-- 返回可解释检索字段：`source`、`slug`、`title`、`section`、`score`、`matchedTerms`、`content`
-- 保留 LangChain4j `ContentRetriever` 作为后续接入向量库的扩展点
-
-这让项目在没有外部向量库的情况下也有稳定可测的本地 RAG 基线，同时后续可以平滑升级到 embedding / vector search。
-
-## Agent Memory
-
-`AgentMemoryService` 为 Agent 提供长期用户记忆。
-
-记忆记录包含：
-
-- `type`：`USER_PREFERENCE`、`WEAKNESS`、`WRONG_ANSWER`、`NEXT_ACTION`、`NOTE`
-- `scope`：通常为 `hot100`
-- `subject`：题目 slug 或主题
-- `content`：长期记忆内容
-- `importance`：1-10
-- `source`：`agent`、`progress` 或其它来源
-
-Hot100 进度更新和错题分析流程会自动写入笔记、薄弱知识点、错因模式和下一步行动。Agent 可以通过 `memory_recall` 召回记忆，也可以通过 `memory_profile` 汇总用户画像。
-
-也可以通过 REST API 查看或写入记忆：
-
-- `GET /api/agent/memory?query=dp&limit=10`
+- `GET /api/agent/memory`
 - `GET /api/agent/memory/profile`
 - `POST /api/agent/memory`
 
 ## 技术栈
 
-- 后端：`Java 21`、`Spring Boot 3.5`、`Spring Security`、`Spring Data JPA`、`Flyway`
-- AI：`LangChain4j`、`DashScope/Qwen`
-- 前端：`Vue 3`、`Vite`、`Axios`、`SSE`
-- 存储和中间件：`MySQL 8`、`Redis`、`RabbitMQ`
-- 部署：`Docker`、`Docker Compose`
+- 后端：Java 21、Spring Boot 3.5、Spring Security、Spring Data JPA、Bean Validation、Actuator
+- AI：LangChain4j、DashScope/Qwen、SSE 流式输出、可选 MCP 集成
+- 数据：MySQL 8、Flyway、Redis 缓存和本地 fallback
+- 前端：Vue 3、Vite、Axios
+- 工程化：Docker、Docker Compose、Maven Wrapper
+- 测试：JUnit 5、Spring Boot Test、Agent 核心测试和 API smoke test
 
 ## 快速启动
+
+创建环境文件：
 
 ```powershell
 Copy-Item .env.example .env
@@ -161,21 +156,22 @@ Copy-Item ai-code-helper-frontend/.env.example ai-code-helper-frontend/.env
 
 - `DASHSCOPE_API_KEY`
 - `APP_AUTH_JWT_SECRET`
-- MySQL / Redis / RabbitMQ 连接信息
+- MySQL 连接配置
+- 如果使用完整 compose 栈，需要配置 Redis 和 RabbitMQ
 
-Docker 启动：
+使用 Docker 启动：
 
 ```bash
 docker compose up -d --build
 ```
 
-本地后端：
+本地启动后端：
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-本地前端：
+本地启动前端：
 
 ```powershell
 cd ai-code-helper-frontend
@@ -185,16 +181,16 @@ npm run dev
 
 ## 验证
 
-运行 Agent 核心回归测试：
-
-```powershell
-.\mvnw.cmd test "-Dtest=AgentMemoryServiceTest,AgentKnowledgeServiceTest,RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
-```
-
 运行全部后端测试：
 
 ```powershell
 .\mvnw.cmd test
+```
+
+运行 Agent 核心测试：
+
+```powershell
+.\mvnw.cmd test "-Dtest=AgentMemoryServiceTest,AgentKnowledgeServiceTest,RuntimeTaskServiceTest,Hot100AgentServiceTest,AgentLoopServiceTest,AgentPromptBuilderTest"
 ```
 
 构建前端：
@@ -206,9 +202,9 @@ npm run build
 
 ## 简历描述
 
-设计并实现面向 Hot100 算法学习场景的 AI Agent Runtime。后端支持多轮 model/tool 循环、受控工具注册表、工具结果回灌、写工具权限控制、长期记忆、本地 skills、sub-agent、上下文压缩、hook 事件、结构化 recovery、持久任务图、后台运行槽位、按 runtime 隔离的执行轨迹和可解释 RAG 检索。
+基于 Spring Boot 和 Vue 实现面向 Hot100 算法学习的 AI 学习助手。后端支持 JWT 用户认证、学习进度管理、错题分析、薄弱标签统计、推荐题单、学习计划、流式 AI 对话，以及自研 Agent Runtime。
 
-在 Agent Runtime 之上构建 Hot100 业务工具层，覆盖进度查询、薄弱标签分析、错因诊断、个性化推荐、学习计划生成、题目搜索、RAG 知识检索和受控进度更新。系统让模型推理保持灵活，同时保证执行过程可控、可观测、可测试、权限安全。
+设计并实现 Agent Runtime：包括后端受控工具注册表、权限门控工具执行、后台运行槽、持久化 step trace、异常恢复策略、长期记忆、skill 加载和可解释本地 RAG。系统让大模型负责推理决策，同时由后端控制真实执行过程，提升可观测性、可测试性和执行安全性。
 
 ## 项目结构
 
@@ -220,23 +216,24 @@ npm run build
 |   |   |-- core/
 |   |   |-- Hot100AgentService.java
 |   |   `-- Hot100AgentToolRegistry.java
-|   |-- controller/
-|   |-- hot100/
 |   |-- ai/
 |   |-- auth/
+|   |-- chat/
+|   |-- controller/
+|   |-- hot100/
 |   |-- entity/
 |   `-- repository/
 |-- src/main/resources/
 |   |-- db/migration/
 |   |-- hot100/json/
 |   |-- hot100/markdown/
-|   `-- skills/
+|   |-- skills/
+|   `-- system-prompt-role.txt
 |-- docs/
-|   `-- agent-core-loop.md
 |-- docker-compose.yml
 `-- README.zh-CN.md
 ```
 
-## 说明
+## 安全说明
 
-不要提交真实 API Key、数据库密码或生产密钥。本地运行文件如 `.env` 和运行时数据目录已经通过 `.gitignore` 忽略。
+不要提交真实 API Key、数据库密码、JWT 密钥或生产环境凭据。本地 `.env` 文件和运行时数据目录应保持在版本控制之外。
