@@ -33,7 +33,7 @@ User Goal
 
 The model is allowed to choose tools, but it cannot execute arbitrary code. Every tool must be registered by the backend with a name, description, permission level, and Java handler.
 
-## s12/s13 Task Runtime Model
+## Task Runtime Model
 
 The project separates task definition from runtime execution attempts:
 
