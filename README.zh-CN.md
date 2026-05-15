@@ -70,6 +70,9 @@ AgentStep
 - 长期用户记忆：记录薄弱点、错因模式、笔记和下一步行动
 - skill 加载和 focused sub-agent 执行
 - 后台运行槽：记录状态、阶段、进度、心跳和每次运行的 step 历史
+- runtime heartbeat 和 watchdog 检查，用于发现长时间无心跳的运行槽
+- Agent 执行过程 SSE 流式输出：`model_turn`、`tool_result`、`tool_error`、`finish`、`error`
+- 可选 MCP 外部工具会注册进 Agent 工具表，并使用 `EXTERNAL` 权限控制
 
 ## Hot100 业务能力
 
@@ -79,7 +82,8 @@ AgentStep
 - 维护错题本并生成错题分析。
 - 根据做题记录计算薄弱标签和标签掌握度。
 - 生成推荐题单和学习计划。
-- 提交 Hot100 Agent 任务，并查看模型和工具调用 trace。
+- 支持同步运行 Hot100 Agent、提交后台任务，或通过 SSE 实时查看 Agent 执行事件。
+- 按任务和 runtime slot 查看模型 / 工具调用 trace。
 
 ## AI 与 RAG
 
@@ -95,6 +99,72 @@ AgentStep
 - 保留 LangChain4j `ContentRetriever` 作为后续接入向量检索的扩展点
 
 这样项目在没有外部向量库时也有稳定可测的本地 RAG 能力，后续也可以平滑升级到 embedding / vector search。
+
+## MCP 集成
+
+项目已经预留并接入了可选 MCP 能力，用于外部 WebSearch 等工具调用。当前 MCP 同时接入普通流式聊天和 Hot100 Agent 工具注册表。
+
+- `McpConfig`：在 MCP 开启时创建 MCP client 和 `McpToolProvider`。
+- `AiCodeHelperServiceFactory`：把 MCP tool provider 挂到 LangChain4j AI Service 上。
+- `QwenMcpCapabilityService`：根据配置生成 MCP 能力提示。
+- `AiController`：把 MCP 能力提示注入 SSE 流式聊天请求。
+- `Hot100AgentToolRegistry`：当 MCP client 可用时，将 MCP 工具动态注册为 `mcp_*` Agent 工具，并标记为 `EXTERNAL` 权限。
+
+MCP 默认关闭。如需开启 DashScope WebSearch MCP，在环境变量或 `.env` 中配置：
+
+```env
+DASHSCOPE_API_KEY=your_dashscope_api_key
+APP_MCP_ENABLED=true
+APP_MCP_SSE_URL=https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp
+APP_MCP_WEB_SEARCH_TOOL_NAME=web_search
+APP_MCP_WEB_SEARCH_QUERY_ARGUMENT=query
+```
+
+`APP_MCP_API_KEY` 可以不单独配置，因为后端会自动 fallback 到 `DASHSCOPE_API_KEY`：
+
+```yaml
+app.mcp.api-key: ${APP_MCP_API_KEY:${DASHSCOPE_API_KEY:}}
+```
+
+如果使用 Docker Compose 启动，根目录 `.env` 会被 Compose 读取。如果本地直接执行 `.\mvnw.cmd spring-boot:run`，PowerShell 不会自动读取 `.env`，需要先在当前 shell 中设置：
+
+```powershell
+$env:APP_MCP_ENABLED="true"
+$env:APP_MCP_SSE_URL="https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp"
+$env:APP_MCP_WEB_SEARCH_TOOL_NAME="web_search"
+$env:APP_MCP_WEB_SEARCH_QUERY_ARGUMENT="query"
+.\mvnw.cmd spring-boot:run
+```
+
+Agent 任务中的 MCP 外部工具受权限门控控制。请求需要显式允许 external 工具，否则 `EXTERNAL` 权限工具会被后端权限门拒绝执行。
+
+## SSE 流式输出
+
+项目目前有两条 SSE 流式链路：
+
+- `GET /api/ai/chat`：普通 AI 聊天流式输出，前端通过 EventSource 接收。
+- `POST /api/agent/hot100/run/stream`：Hot100 Agent 运行时事件流，Agent loop 执行过程中实时推送。
+
+Agent 流式事件使用命名 SSE event，payload 来自 `AgentStreamEvent`：
+
+```json
+{
+  "type": "tool_result",
+  "turn": 2,
+  "toolName": "getWeakTags",
+  "data": "...",
+  "latencyMs": 123,
+  "status": "SUCCESS"
+}
+```
+
+当前 Agent 事件类型：
+
+- `model_turn`：模型完成一轮推理。
+- `tool_result`：工具调用成功。
+- `tool_error`：工具调用失败。
+- `finish`：Agent 生成最终答案。
+- `error`：Agent 运行失败。
 
 ## 核心接口
 
@@ -125,6 +195,8 @@ Hot100：
 
 Agent：
 
+- `POST /api/agent/hot100/run`
+- `POST /api/agent/hot100/run/stream` - Agent SSE 实时运行
 - `POST /api/agent/hot100/tasks`
 - `GET /api/agent/hot100/tasks/{taskId}`
 - `GET /api/agent/hot100/tasks/{taskId}/trace`
@@ -158,6 +230,7 @@ Copy-Item ai-code-helper-frontend/.env.example ai-code-helper-frontend/.env
 - `APP_AUTH_JWT_SECRET`
 - MySQL 连接配置
 - 如果使用完整 compose 栈，需要配置 Redis 和 RabbitMQ
+- 如果开启 WebSearch MCP，需要配置 `APP_MCP_ENABLED`、`APP_MCP_SSE_URL`、`APP_MCP_WEB_SEARCH_TOOL_NAME`、`APP_MCP_WEB_SEARCH_QUERY_ARGUMENT`
 
 使用 Docker 启动：
 

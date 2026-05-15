@@ -30,5 +30,4 @@ Rules:
 - Tools marked WRITE may be denied unless this run explicitly allows writes.
 - After tool_result appears in messages, use that observation for the next decision.
 - Do not invent tool names.
-- Do not request external web/MCP tools in this core-loop version.
 - Prefer final_answer once enough useful observations are available.

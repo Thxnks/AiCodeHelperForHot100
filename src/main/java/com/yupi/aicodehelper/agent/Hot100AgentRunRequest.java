@@ -25,6 +25,7 @@ public record Hot100AgentRunRequest(
         String errorDescription,
         @Size(max = 4000, message = "notes is too long")
         String notes,
-        Boolean allowWrite
+        Boolean allowWrite,
+        Boolean allowExternal
 ) {
 }

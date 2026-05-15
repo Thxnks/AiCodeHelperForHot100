@@ -8,12 +8,14 @@ import com.yupi.aicodehelper.agent.Hot100AgentService;
 import com.yupi.aicodehelper.auth.CurrentUserService;
 import com.yupi.aicodehelper.common.BaseResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -34,6 +36,12 @@ public class Hot100AgentController {
     public BaseResponse<AgentTaskView> run(@Valid @RequestBody Hot100AgentRunRequest request) {
         Long userId = currentUserService.requireUserId();
         return BaseResponse.success(hot100AgentService.run(request, userId));
+    }
+
+    @PostMapping("/run/stream")
+    public Flux<ServerSentEvent<String>> runStream(@Valid @RequestBody Hot100AgentRunRequest request) {
+        Long userId = currentUserService.requireUserId();
+        return hot100AgentService.runStream(request, userId);
     }
 
     @PostMapping("/tasks")

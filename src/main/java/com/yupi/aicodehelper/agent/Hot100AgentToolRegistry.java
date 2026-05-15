@@ -1,5 +1,6 @@
 package com.yupi.aicodehelper.agent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yupi.aicodehelper.agent.core.AgentToolRegistry;
 import com.yupi.aicodehelper.agent.core.AgentToolPermissionLevel;
 import com.yupi.aicodehelper.agent.core.SubAgentResult;
@@ -12,6 +13,9 @@ import com.yupi.aicodehelper.hot100.Hot100ProgressUpsertRequest;
 import com.yupi.aicodehelper.hot100.Hot100Service;
 import com.yupi.aicodehelper.hot100.Hot100WrongAnalysisService;
 import com.yupi.aicodehelper.hot100.Hot100WrongAnswerAnalyzeRequest;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.mcp.client.McpClient;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -29,6 +33,8 @@ public class Hot100AgentToolRegistry {
     private final AgentMemoryService agentMemoryService;
     private final SubAgentService subAgentService;
     private final AiCodeHelperService aiCodeHelperService;
+    private final ObjectProvider<McpClient> mcpClientProvider;
+    private final ObjectMapper objectMapper;
 
     public Hot100AgentToolRegistry(Hot100Service hot100Service,
                                    Hot100ProgressService hot100ProgressService,
@@ -36,7 +42,9 @@ public class Hot100AgentToolRegistry {
                                    AgentKnowledgeService agentKnowledgeService,
                                    AgentMemoryService agentMemoryService,
                                    SubAgentService subAgentService,
-                                   AiCodeHelperService aiCodeHelperService) {
+                                   AiCodeHelperService aiCodeHelperService,
+                                   ObjectProvider<McpClient> mcpClientProvider,
+                                   ObjectMapper objectMapper) {
         this.hot100Service = hot100Service;
         this.hot100ProgressService = hot100ProgressService;
         this.hot100WrongAnalysisService = hot100WrongAnalysisService;
@@ -44,10 +52,12 @@ public class Hot100AgentToolRegistry {
         this.agentMemoryService = agentMemoryService;
         this.subAgentService = subAgentService;
         this.aiCodeHelperService = aiCodeHelperService;
+        this.mcpClientProvider = mcpClientProvider;
+        this.objectMapper = objectMapper;
     }
 
     public AgentToolRegistry create(Hot100AgentRunRequest request, Long userId) {
-        return new AgentToolRegistry()
+        AgentToolRegistry registry = new AgentToolRegistry()
                 .register("getUserProgress", "Inspect the user's saved Hot100 progress.", input ->
                         hot100ProgressService.listProgress(userId))
                 .register("getWeakTags", "Inspect weak tags inferred from wrong answers.", input ->
@@ -121,6 +131,8 @@ public class Hot100AgentToolRegistry {
                         runProblemSubAgent(input, request))
                 .register("reviewWrongAnswerWithSubAgent", "Ask a focused sub-agent to review wrong-answer evidence without writing progress. Input: problemSlug.", input ->
                         runWrongAnswerSubAgent(input, request));
+        registerMcpTools(registry);
+        return registry;
     }
 
     private SubAgentResult runProblemSubAgent(Map<String, Object> input, Hot100AgentRunRequest request) {
@@ -160,6 +172,54 @@ public class Hot100AgentToolRegistry {
                 aiCodeHelperService::runHot100AgentLoopTurn,
                 4
         );
+    }
+
+    private void registerMcpTools(AgentToolRegistry registry) {
+        McpClient mcpClient = mcpClientProvider.getIfAvailable();
+        if (mcpClient == null) {
+            return;
+        }
+        try {
+            for (var spec : mcpClient.listTools()) {
+                String name = spec.name();
+                String mcpName = "mcp_" + name;
+                String description = buildMcpDescription(spec);
+                registry.register(mcpName, description, AgentToolPermissionLevel.EXTERNAL, input -> {
+                    try {
+                        String args = objectMapper.writeValueAsString(input);
+                        ToolExecutionRequest request = ToolExecutionRequest.builder()
+                                .name(name)
+                                .arguments(args)
+                                .build();
+                        return mcpClient.executeTool(request);
+                    } catch (Exception e) {
+                        throw new RuntimeException("MCP tool " + name + " failed: " + e.getMessage(), e);
+                    }
+                });
+            }
+        } catch (Exception ignored) {
+            // MCP server unavailable — skip external tools
+        }
+    }
+
+    private String buildMcpDescription(dev.langchain4j.agent.tool.ToolSpecification spec) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(spec.description() != null ? spec.description() : "MCP external tool");
+        var params = spec.parameters();
+        if (params != null && params.properties() != null && !params.properties().isEmpty()) {
+            sb.append(". Input: {");
+            boolean first = true;
+            for (var prop : params.properties().entrySet()) {
+                if (!first) sb.append(", ");
+                first = false;
+                sb.append(prop.getKey());
+                if (params.required() != null && params.required().contains(prop.getKey())) {
+                    sb.append(" (required)");
+                }
+            }
+            sb.append("}");
+        }
+        return sb.toString();
     }
 
     private int limit(Hot100AgentRunRequest request) {

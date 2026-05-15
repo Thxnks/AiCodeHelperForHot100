@@ -70,6 +70,9 @@ Current Agent capabilities include:
 - Long-term user memory for weaknesses, wrong-answer patterns, notes, and next actions
 - Skill loading and focused sub-agent execution
 - Runtime task slots with status, progress, heartbeat, and per-runtime step history
+- Runtime heartbeat and watchdog checks for stale running slots
+- SSE streaming for live Agent execution events: `model_turn`, `tool_result`, `tool_error`, `finish`, and `error`
+- Optional MCP external tools registered into the Agent tool registry with `EXTERNAL` permission
 
 ## Hot100 Domain Features
 
@@ -79,7 +82,8 @@ Current Agent capabilities include:
 - Maintain a wrong book and generate wrong-answer analysis.
 - Compute weak tags and tag mastery from progress records.
 - Generate recommendation lists and study plans.
-- Run a Hot100 Agent task and inspect model/tool execution traces.
+- Run a Hot100 Agent task synchronously, submit it as a background task, or stream live execution events through SSE.
+- Inspect model/tool execution traces by task and runtime slot.
 
 ## AI and RAG
 
@@ -95,6 +99,72 @@ The current retrieval baseline:
 - keeps LangChain4j `ContentRetriever` as an optional extension point for vector retrieval
 
 This gives the project a deterministic local RAG path for tests and demos, while leaving room for embedding-based search.
+
+## MCP Integration
+
+The project has optional MCP integration for external web-search capabilities. MCP is wired into both the normal streaming chat path and the Hot100 Agent tool registry.
+
+- `McpConfig`: creates the MCP client and `McpToolProvider` when MCP is enabled.
+- `AiCodeHelperServiceFactory`: attaches the MCP tool provider to the LangChain4j AI service.
+- `QwenMcpCapabilityService`: injects an MCP capability notice into the chat prompt.
+- `AiController`: passes the MCP capability notice into the SSE chat request.
+- `Hot100AgentToolRegistry`: dynamically registers MCP tools as `mcp_*` Agent tools with `EXTERNAL` permission when an MCP client is available.
+
+MCP is disabled by default. To enable DashScope WebSearch MCP, configure:
+
+```env
+DASHSCOPE_API_KEY=your_dashscope_api_key
+APP_MCP_ENABLED=true
+APP_MCP_SSE_URL=https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp
+APP_MCP_WEB_SEARCH_TOOL_NAME=web_search
+APP_MCP_WEB_SEARCH_QUERY_ARGUMENT=query
+```
+
+`APP_MCP_API_KEY` is optional because the backend falls back to `DASHSCOPE_API_KEY`:
+
+```yaml
+app.mcp.api-key: ${APP_MCP_API_KEY:${DASHSCOPE_API_KEY:}}
+```
+
+When using Docker Compose, the root `.env` file is loaded by Compose. When running locally with `.\mvnw.cmd spring-boot:run`, PowerShell does not automatically load `.env`; export the variables in the current shell first:
+
+```powershell
+$env:APP_MCP_ENABLED="true"
+$env:APP_MCP_SSE_URL="https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp"
+$env:APP_MCP_WEB_SEARCH_TOOL_NAME="web_search"
+$env:APP_MCP_WEB_SEARCH_QUERY_ARGUMENT="query"
+.\mvnw.cmd spring-boot:run
+```
+
+For Agent tasks, external MCP tools are permission-gated. A request must explicitly allow external tools, otherwise tools registered with `EXTERNAL` permission are denied by the backend permission gate.
+
+## SSE Streaming
+
+The project exposes two streaming paths:
+
+- `GET /api/ai/chat`: streams normal AI chat tokens to the frontend through Server-Sent Events.
+- `POST /api/agent/hot100/run/stream`: streams Hot100 Agent runtime events while the Agent loop is running.
+
+Agent stream events are emitted as named SSE events. The event payload is serialized from `AgentStreamEvent`:
+
+```json
+{
+  "type": "tool_result",
+  "turn": 2,
+  "toolName": "getWeakTags",
+  "data": "...",
+  "latencyMs": 123,
+  "status": "SUCCESS"
+}
+```
+
+Supported Agent event types:
+
+- `model_turn`: the model completed one reasoning turn.
+- `tool_result`: a tool call completed successfully.
+- `tool_error`: a tool call failed.
+- `finish`: the Agent produced the final answer.
+- `error`: the Agent run failed.
 
 ## Main APIs
 
@@ -125,6 +195,8 @@ Hot100:
 
 Agent:
 
+- `POST /api/agent/hot100/run`
+- `POST /api/agent/hot100/run/stream` - SSE live Agent run
 - `POST /api/agent/hot100/tasks`
 - `GET /api/agent/hot100/tasks/{taskId}`
 - `GET /api/agent/hot100/tasks/{taskId}/trace`
@@ -158,6 +230,7 @@ Configure at least:
 - `APP_AUTH_JWT_SECRET`
 - MySQL connection settings
 - Redis and RabbitMQ settings if you use the full compose stack
+- Optional MCP settings if WebSearch MCP is enabled: `APP_MCP_ENABLED`, `APP_MCP_SSE_URL`, `APP_MCP_WEB_SEARCH_TOOL_NAME`, `APP_MCP_WEB_SEARCH_QUERY_ARGUMENT`
 
 Start infrastructure and application with Docker:
 

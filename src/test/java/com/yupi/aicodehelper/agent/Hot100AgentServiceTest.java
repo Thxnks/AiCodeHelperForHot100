@@ -97,11 +97,13 @@ class Hot100AgentServiceTest {
                 taskRepository,
                 stepRepository,
                 objectMapper,
-                new RuntimeTaskService(directExecutor)
+                new RuntimeTaskService(directExecutor),
+                directExecutor
         );
 
         AgentTaskView view = service.run(new Hot100AgentRunRequest(
                 "Help me plan Hot100 practice",
+                null,
                 null,
                 null,
                 null,
@@ -181,11 +183,13 @@ class Hot100AgentServiceTest {
                 taskRepository,
                 stepRepository,
                 objectMapper,
-                new RuntimeTaskService(directExecutor)
+                new RuntimeTaskService(directExecutor),
+                directExecutor
         );
 
         AgentTaskView view = service.submit(new Hot100AgentRunRequest(
                 "Run in background",
+                null,
                 null,
                 null,
                 null,
@@ -258,11 +262,13 @@ class Hot100AgentServiceTest {
                 taskRepository,
                 stepRepository,
                 objectMapper,
-                new RuntimeTaskService(pausedExecutor)
+                new RuntimeTaskService(pausedExecutor),
+                pausedExecutor
         );
 
         AgentTaskView view = service.submit(new Hot100AgentRunRequest(
                 "Queue background run",
+                null,
                 null,
                 null,
                 null,

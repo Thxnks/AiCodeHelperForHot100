@@ -7,6 +7,7 @@ import com.yupi.aicodehelper.agent.core.AgentLoopObserver;
 import com.yupi.aicodehelper.agent.core.AgentLoopService;
 import com.yupi.aicodehelper.agent.core.AgentLoopState;
 import com.yupi.aicodehelper.agent.core.AgentPermissionContext;
+import com.yupi.aicodehelper.agent.core.AgentStreamEvent;
 import com.yupi.aicodehelper.agent.core.AgentToolRegistry;
 import com.yupi.aicodehelper.agent.core.RuntimeTaskService;
 import com.yupi.aicodehelper.common.ErrorCode;
@@ -15,14 +16,19 @@ import com.yupi.aicodehelper.entity.AgentTask;
 import com.yupi.aicodehelper.exception.BusinessException;
 import com.yupi.aicodehelper.repository.AgentStepRepository;
 import com.yupi.aicodehelper.repository.AgentTaskRepository;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.UUID;
+import java.util.concurrent.Executor;
 
 @Service
 public class Hot100AgentService {
@@ -34,6 +40,7 @@ public class Hot100AgentService {
     private final AgentStepRepository agentStepRepository;
     private final ObjectMapper objectMapper;
     private final RuntimeTaskService runtimeTaskService;
+    private final Executor executor;
 
     public Hot100AgentService(AiCodeHelperService aiCodeHelperService,
                               AgentLoopService agentLoopService,
@@ -41,7 +48,8 @@ public class Hot100AgentService {
                               AgentTaskRepository agentTaskRepository,
                               AgentStepRepository agentStepRepository,
                               ObjectMapper objectMapper,
-                              RuntimeTaskService runtimeTaskService) {
+                              RuntimeTaskService runtimeTaskService,
+                              @Qualifier("hot100TaskExecutor") Executor executor) {
         this.aiCodeHelperService = aiCodeHelperService;
         this.agentLoopService = agentLoopService;
         this.hot100AgentToolRegistry = hot100AgentToolRegistry;
@@ -49,6 +57,7 @@ public class Hot100AgentService {
         this.agentStepRepository = agentStepRepository;
         this.objectMapper = objectMapper;
         this.runtimeTaskService = runtimeTaskService;
+        this.executor = executor;
     }
 
     @Transactional
@@ -151,32 +160,44 @@ public class Hot100AgentService {
     }
 
     private String executePlan(AgentRunContext context) {
+        return executePlan(context, AgentLoopObserver.NOOP);
+    }
+
+    private String executePlan(AgentRunContext context, AgentLoopObserver extraObserver) {
         AgentToolRegistry toolRegistry = hot100AgentToolRegistry.create(context.request(), context.userId());
         AgentLoopObserver observer = new AgentLoopObserver() {
             @Override
             public void onModelTurn(int turn, String input, String output, long latencyMs) {
+                heartbeat(context);
                 saveStep(context, "model_turn", Map.of("turn", turn, "input", truncate(input, 12000)),
                         output, AgentStepStatus.SUCCESS.name(), latencyMs, null);
             }
 
             @Override
             public void onToolResult(int turn, String toolName, Map<String, Object> input, Object output, long latencyMs) {
+                heartbeat(context);
                 saveStep(context, "tool:" + toolName, input, output, AgentStepStatus.SUCCESS.name(), latencyMs, null);
             }
 
             @Override
             public void onToolError(int turn, String toolName, Map<String, Object> input, Exception error, long latencyMs) {
+                heartbeat(context);
                 saveStep(context, "tool:" + toolName, input, null, AgentStepStatus.FAILED.name(), latencyMs,
                         truncate(error.getMessage(), 1000));
             }
         };
+        AgentLoopObserver composite = compose(observer, extraObserver);
 
         AgentLoopState state = agentLoopService.run(
                 buildLoopGoal(context.request()),
                 toolRegistry,
                 aiCodeHelperService::runHot100AgentLoopTurn,
-                observer,
-                new AgentPermissionContext(Boolean.TRUE.equals(context.request().allowWrite()), false, false)
+                composite,
+                new AgentPermissionContext(
+                        Boolean.TRUE.equals(context.request().allowWrite()),
+                        Boolean.TRUE.equals(context.request().allowExternal()),
+                        false
+                )
         );
         return state.finalAnswer();
     }
@@ -305,6 +326,95 @@ public class Hot100AgentService {
 
     private String blankToNullText(String value) {
         return isBlank(value) ? "null" : value.trim();
+    }
+
+    private void heartbeat(AgentRunContext context) {
+        if (context.runtimeId() != null) {
+            runtimeTaskService.heartbeat(context.runtimeId(), "agent_loop", 50);
+        }
+    }
+
+    private AgentLoopObserver compose(AgentLoopObserver a, AgentLoopObserver b) {
+        if (a == AgentLoopObserver.NOOP) {
+            return b;
+        }
+        if (b == AgentLoopObserver.NOOP) {
+            return a;
+        }
+        return new AgentLoopObserver() {
+            @Override
+            public void onModelTurn(int turn, String input, String output, long latencyMs) {
+                a.onModelTurn(turn, input, output, latencyMs);
+                b.onModelTurn(turn, input, output, latencyMs);
+            }
+
+            @Override
+            public void onToolResult(int turn, String toolName, Map<String, Object> input, Object output, long latencyMs) {
+                a.onToolResult(turn, toolName, input, output, latencyMs);
+                b.onToolResult(turn, toolName, input, output, latencyMs);
+            }
+
+            @Override
+            public void onToolError(int turn, String toolName, Map<String, Object> input, Exception error, long latencyMs) {
+                a.onToolError(turn, toolName, input, error, latencyMs);
+                b.onToolError(turn, toolName, input, error, latencyMs);
+            }
+        };
+    }
+
+    public Flux<ServerSentEvent<String>> runStream(Hot100AgentRunRequest request, Long userId) {
+        Sinks.Many<AgentStreamEvent> sink = Sinks.many().multicast().onBackpressureBuffer();
+        AgentTask task = createTask(request, userId, AgentTaskStatus.RUNNING);
+
+        executor.execute(() -> {
+            String taskId = task.getTaskId();
+            AgentRunContext context = new AgentRunContext(taskId, null, request, userId);
+            try {
+                AgentLoopObserver sseObserver = new AgentLoopObserver() {
+                    @Override
+                    public void onModelTurn(int turn, String input, String output, long latencyMs) {
+                        sink.tryEmitNext(new AgentStreamEvent("model_turn", turn, null,
+                                truncate(input, 3000), latencyMs, AgentStepStatus.SUCCESS.name()));
+                    }
+
+                    @Override
+                    public void onToolResult(int turn, String toolName, Map<String, Object> input, Object output, long latencyMs) {
+                        sink.tryEmitNext(new AgentStreamEvent("tool_result", turn, toolName,
+                                truncate(toJson(output), 3000), latencyMs, AgentStepStatus.SUCCESS.name()));
+                    }
+
+                    @Override
+                    public void onToolError(int turn, String toolName, Map<String, Object> input, Exception error, long latencyMs) {
+                        sink.tryEmitNext(new AgentStreamEvent("tool_error", turn, toolName,
+                                truncate(error.getMessage(), 1000), latencyMs, AgentStepStatus.FAILED.name()));
+                    }
+                };
+
+                String finalAnswer = executePlan(context, sseObserver);
+
+                task.setStatus(AgentTaskStatus.SUCCESS.name());
+                task.setFinalAnswer(finalAnswer);
+                agentTaskRepository.save(task);
+
+                sink.tryEmitNext(new AgentStreamEvent("finish", 0, null,
+                        truncate(finalAnswer, 6000), 0, AgentTaskStatus.SUCCESS.name()));
+                sink.tryEmitComplete();
+            } catch (Exception e) {
+                task.setStatus(AgentTaskStatus.FAILED.name());
+                task.setErrorMessage(truncate(e.getMessage(), 1000));
+                agentTaskRepository.save(task);
+                sink.tryEmitNext(new AgentStreamEvent("error", 0, null,
+                        truncate(e.getMessage(), 1000), 0, AgentTaskStatus.FAILED.name()));
+                sink.tryEmitComplete();
+            }
+        });
+
+        return sink.asFlux()
+                .map(event -> ServerSentEvent.<String>builder()
+                        .id(UUID.randomUUID().toString())
+                        .event(event.type())
+                        .data(toJson(event))
+                        .build());
     }
 
     private boolean isBlank(String value) {
