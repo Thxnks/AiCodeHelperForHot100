@@ -142,8 +142,13 @@ class AgentLoopServiceTest {
                 "Collect several observations.",
                 registry,
                 prompt -> {
+                    if (prompt.contains("Summarize this agent conversation")) {
+                        return """
+                                {"goal":"Collect observations","done":"Observed several tool results","findings":["Compaction was triggered"],"remaining":"Finish the run"}
+                                """;
+                    }
                     int currentTurn = turn.incrementAndGet();
-                    if (currentTurn <= 7) {
+                    if (currentTurn <= 14) {
                         return """
                                 {"type":"tool_use","id":"toolu_%s","name":"observe","input":{"index":%s}}
                                 """.formatted(currentTurn, currentTurn);
@@ -153,12 +158,11 @@ class AgentLoopServiceTest {
                             """;
                 },
                 AgentLoopObserver.NOOP,
-                9
+                18
         );
 
-        assertThat(state.compactSummary()).isNotNull();
-        assertThat(state.compactSummary().content()).contains("Recent observations");
         assertThat(state.finalAnswer()).isEqualTo("Compacted and finished.");
+        assertThat(state.messages().size()).isLessThanOrEqualTo(16);
     }
 
     @Test

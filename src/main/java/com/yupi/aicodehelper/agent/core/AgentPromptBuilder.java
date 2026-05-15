@@ -73,7 +73,11 @@ public class AgentPromptBuilder {
     }
 
     private String renderCompactSummary(AgentLoopState state) {
-        return state.compactSummary() == null ? "(none)" : state.compactSummary().content();
+        if (state.compactSummary() == null) {
+            return "(none)";
+        }
+        AgentCompactSummary cs = state.compactSummary();
+        return "[Tier: %s, at turn %d]\n%s".formatted(cs.tier(), cs.turnsCompleted(), cs.content());
     }
 
     private String toJson(Object value) {

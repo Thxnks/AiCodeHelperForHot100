@@ -33,6 +33,8 @@ public class McpConfig {
         String sseUrl = appMcpProperties.getSseUrl();
         long reconnectIntervalSeconds = appMcpProperties.getReconnectIntervalSeconds();
 
+        // NOTE: langchain4j-mcp 1.1.0-beta7 HttpMcpTransport does not support custom headers.
+        // API key is passed as query parameter — upgrade the library when header support is added.
         String encodedAuthorization = URLEncoder.encode("Bearer " + apiKey, StandardCharsets.UTF_8);
         String fullSseUrl = sseUrl + (sseUrl.contains("?") ? "&" : "?") + "Authorization=" + encodedAuthorization;
 

@@ -34,14 +34,15 @@ public class AgentLoopState {
         return compactSummary;
     }
 
-    public void compact(String summary) {
-        this.compactSummary = new AgentCompactSummary(summary);
+    public void compact(String summary, int turnsCompleted, String tier) {
+        this.compactSummary = new AgentCompactSummary(summary, turnsCompleted, tier);
         AgentMessage originalUserMessage = messages.isEmpty() ? null : messages.get(0);
         this.messages.clear();
         if (originalUserMessage != null) {
             this.messages.add(originalUserMessage);
         }
-        this.messages.add(new AgentMessage("assistant", "COMPACT SUMMARY:\n" + summary));
+        this.messages.add(new AgentMessage("assistant",
+                "[%s — compacted after %d turns]\n%s".formatted(tier, turnsCompleted, summary)));
     }
 
     public int turnCount() {

@@ -17,8 +17,20 @@ import java.util.UUID;
 public class AgentLoopService {
 
     private static final int DEFAULT_MAX_TURNS = 8;
-    private static final int MAX_MESSAGES_BEFORE_COMPACT = 12;
-    private static final int MAX_RENDERED_MESSAGES_CHARS = 16000;
+
+    // Tier 1: Snip — remove older, lower-scoring messages
+    private static final int TIER1_MAX_MESSAGES = 10;
+    private static final int TIER1_MAX_CHARS = 8000;
+
+    // Tier 2: Microcompact — compress large tool outputs
+    private static final int TIER2_MAX_MESSAGES = 16;
+    private static final int TIER2_MAX_CHARS = 12000;
+
+    // Tier 3: Autocompact — model-generated summary
+    private static final int TIER3_MAX_CHARS = 15000;
+
+    private static final int TOOL_RESULT_COMPRESS_THRESHOLD = 600;
+    private static final int SNIP_KEEP_LAST = 4;
 
     private final ObjectMapper objectMapper;
     private final SkillCatalogService skillCatalogService;
@@ -121,7 +133,7 @@ public class AgentLoopService {
 
         while (!state.finished() && state.turnCount() < maxTurns) {
             state.incrementTurnCount();
-            compactIfNeeded(state);
+            compactIfNeeded(state, turnClient);
             String prompt = promptBuilder.build(new AgentPromptContext(state, toolRegistry));
             publishHook(AgentHookEventType.BEFORE_MODEL_TURN, state.turnCount(), null, Map.of(
                     "promptLength", prompt.length()
@@ -274,33 +286,218 @@ public class AgentLoopService {
                         taskGraphService.list(booleanArg(input, "includeDeleted", false)));
     }
 
-    private void compactIfNeeded(AgentLoopState state) {
-        String renderedMessages = promptBuilder.renderMessages(state);
-        if (state.messages().size() <= MAX_MESSAGES_BEFORE_COMPACT
-                && renderedMessages.length() <= MAX_RENDERED_MESSAGES_CHARS) {
+    private void compactIfNeeded(AgentLoopState state, AgentTurnClient turnClient) {
+        String rendered = promptBuilder.renderMessages(state);
+        int msgCount = state.messages().size();
+
+        // No compaction needed
+        if (msgCount <= TIER1_MAX_MESSAGES && rendered.length() <= TIER1_MAX_CHARS) {
             return;
         }
-        state.compact(buildCompactSummary(state));
+
+        // ---- Tier 1: Snip — score and remove low-value old messages ----
+        boolean needsMore = applySnip(state);
         publishHook(AgentHookEventType.ON_COMPACT, state.turnCount(), null, Map.of(
-                "messageCount", state.messages().size(),
-                "summaryLength", state.compactSummary() == null ? 0 : state.compactSummary().content().length()
+                "tier", "TIER1_SNIP",
+                "messageCount", state.messages().size()
+        ));
+        if (!needsMore) return;
+
+        // ---- Tier 2: Microcompact — trim large tool outputs ----
+        needsMore = applyMicrocompact(state);
+        publishHook(AgentHookEventType.ON_COMPACT, state.turnCount(), null, Map.of(
+                "tier", "TIER2_MICROCOMPACT",
+                "messageCount", state.messages().size()
+        ));
+        if (!needsMore) return;
+
+        // ---- Tier 3: Autocompact — model-generated structured summary ----
+        applyAutocompact(state, turnClient);
+        publishHook(AgentHookEventType.ON_COMPACT, state.turnCount(), null, Map.of(
+                "tier", "TIER3_AUTOCOMPACT",
+                "messageCount", state.messages().size()
         ));
     }
 
-    private String buildCompactSummary(AgentLoopState state) {
-        StringBuilder summary = new StringBuilder();
-        summary.append("Turns completed: ").append(state.turnCount()).append("\n");
-        summary.append("Todos: ").append(promptBuilder.renderTodos(state)).append("\n");
-        summary.append("Recent observations:\n");
-        state.messages().stream()
-                .skip(Math.max(0, state.messages().size() - 8))
-                .forEach(message -> summary.append("- ")
-                        .append(message.role())
-                        .append(": ")
-                        .append(truncate(message.content(), 500))
-                        .append("\n"));
-        return summary.toString().trim();
+    // ---- Tier 1: Snip — score and remove low-value old messages ----
+    private boolean applySnip(AgentLoopState state) {
+        List<AgentMessage> messages = state.messages();
+        int total = messages.size();
+        if (total <= TIER1_MAX_MESSAGES) {
+            return needsMoreCompaction(state);
+        }
+
+        // Score each message, keep highest-scoring ones
+        java.util.List<ScoredMessage> scored = new ArrayList<>();
+        for (int i = 0; i < total; i++) {
+            scored.add(new ScoredMessage(i, snipScore(i, total, messages.get(i))));
+        }
+        scored.sort((a, b) -> Integer.compare(b.score, a.score));
+
+        int keepCount = Math.max(3, TIER1_MAX_MESSAGES - SNIP_KEEP_LAST);
+        boolean[] keep = new boolean[total];
+        // Always keep first message (original goal) and last N messages
+        for (var sm : scored) {
+            if (sm.index == 0 || sm.index >= total - SNIP_KEEP_LAST) {
+                keep[sm.index] = true;
+            }
+        }
+        int kept = 0;
+        for (var sm : scored) {
+            if (kept >= keepCount) break;
+            if (!keep[sm.index]) {
+                keep[sm.index] = true;
+                kept++;
+            }
+        }
+
+        // Remove low-scoring messages (iterate backwards to preserve indices)
+        for (int i = total - 1; i >= 0; i--) {
+            if (!keep[i]) {
+                messages.remove(i);
+            }
+        }
+
+        return needsMoreCompaction(state);
     }
+
+    private int snipScore(int index, int total, AgentMessage msg) {
+        if (index == 0) return 100;
+        if (index >= total - SNIP_KEEP_LAST) return 100;
+        int base = "assistant".equals(msg.role()) ? 8 : 6;
+        int agePenalty = (index * 5) / total;
+        return Math.max(1, base - agePenalty);
+    }
+
+    // ---- Tier 2: Microcompact — trim large tool outputs in-place ----
+    private boolean applyMicrocompact(AgentLoopState state) {
+        List<AgentMessage> messages = state.messages();
+        if (!needsMoreCompaction(state)) {
+            return false;
+        }
+
+        int compressed = 0;
+        for (int i = 0; i < messages.size(); i++) {
+            AgentMessage msg = messages.get(i);
+            if ("user".equals(msg.role()) && msg.content().length() > TOOL_RESULT_COMPRESS_THRESHOLD) {
+                String trimmed = compressToolOutput(msg.content());
+                if (trimmed.length() < msg.content().length()) {
+                    messages.set(i, new AgentMessage(msg.role(), trimmed));
+                    compressed++;
+                }
+            }
+        }
+
+        return compressed > 0 ? needsMoreCompaction(state) : true;
+    }
+
+    private String compressToolOutput(String content) {
+        try {
+            var node = objectMapper.readTree(content);
+            if (node.isObject()) {
+                var trimmed = objectMapper.createObjectNode();
+                int added = 0;
+                var fields = node.fields();
+                while (fields.hasNext() && added < 8) {
+                    var field = fields.next();
+                    String value = field.getValue().isArray()
+                            ? "[... %d items]".formatted(field.getValue().size())
+                            : truncate(field.getValue().toPrettyString(), 200);
+                    trimmed.put(field.getKey(), value);
+                    added++;
+                }
+                if (node.size() > added) {
+                    trimmed.put("_compacted", "%d fields omitted".formatted(node.size() - added));
+                }
+                return objectMapper.writeValueAsString(trimmed);
+            }
+            if (node.isArray() && node.size() > 5) {
+                var trimmed = objectMapper.createArrayNode();
+                for (int j = 0; j < 5; j++) {
+                    trimmed.add(node.get(j));
+                }
+                var wrapper = objectMapper.createObjectNode();
+                wrapper.put("_compacted", "Array trimmed from %d to %d".formatted(node.size(), 5));
+                wrapper.set("_items", trimmed);
+                return objectMapper.writeValueAsString(wrapper);
+            }
+        } catch (Exception ignored) {
+        }
+        return truncate(content, 600);
+    }
+
+    // ---- Tier 3: Autocompact — model-generated structured summary ----
+    private void applyAutocompact(AgentLoopState state, AgentTurnClient turnClient) {
+        if (!needsMoreCompaction(state)) {
+            return;
+        }
+
+        List<AgentMessage> messages = state.messages();
+        StringBuilder context = new StringBuilder();
+        if (!messages.isEmpty()) {
+            context.append("Goal: ").append(truncate(messages.get(0).content(), 2000)).append("\n\n");
+        }
+        int start = Math.max(1, messages.size() - 10);
+        for (int i = start; i < messages.size(); i++) {
+            var msg = messages.get(i);
+            context.append(msg.role()).append(": ")
+                    .append(truncate(msg.content(), 800))
+                    .append("\n");
+        }
+
+        String compactPrompt = """
+                Summarize this agent conversation. Output JSON only:
+                {"goal":"restate goal","done":"achievements","findings":["key1","key2"],"remaining":"pending work"}
+
+                Context:
+                %s""".formatted(context.toString().trim());
+
+        try {
+            String modelOutput = turnClient.nextTurn(compactPrompt);
+            String json = extractJsonObject(modelOutput);
+            var node = objectMapper.readTree(json);
+            String goal = node.has("goal") ? node.get("goal").asText("") : "";
+            String done = node.has("done") ? node.get("done").asText("") : "";
+            String remaining = node.has("remaining") ? node.get("remaining").asText("") : "";
+            var findings = node.has("findings") ? node.get("findings") : objectMapper.createArrayNode();
+
+            StringBuilder summary = new StringBuilder();
+            if (!goal.isBlank()) summary.append("Goal: ").append(goal).append("\n");
+            if (!done.isBlank()) summary.append("Done: ").append(done).append("\n");
+            if (findings.size() > 0) {
+                summary.append("Findings:\n");
+                for (var f : findings) {
+                    summary.append("  - ").append(f.asText()).append("\n");
+                }
+            }
+            if (!remaining.isBlank()) summary.append("Remaining: ").append(remaining);
+            summary.append("\nTodos: ").append(promptBuilder.renderTodos(state));
+
+            state.compact(summary.toString().trim(), state.turnCount(), "TIER3_AUTOCOMPACT");
+        } catch (Exception ignored) {
+            // Model compaction failed — hard truncation fallback
+            List<AgentMessage> trimmed = new ArrayList<>();
+            if (!messages.isEmpty()) {
+                trimmed.add(messages.get(0));
+            }
+            trimmed.add(new AgentMessage("assistant",
+                    "COMPACT (model unavailable) — Turns: %d, Todos: %s"
+                            .formatted(state.turnCount(), promptBuilder.renderTodos(state))));
+            for (int i = Math.max(1, messages.size() - SNIP_KEEP_LAST); i < messages.size(); i++) {
+                trimmed.add(new AgentMessage(messages.get(i).role(),
+                        truncate(messages.get(i).content(), 800)));
+            }
+            messages.clear();
+            messages.addAll(trimmed);
+        }
+    }
+
+    private boolean needsMoreCompaction(AgentLoopState state) {
+        String rendered = promptBuilder.renderMessages(state);
+        return state.messages().size() > TIER2_MAX_MESSAGES || rendered.length() > TIER3_MAX_CHARS;
+    }
+
+    private record ScoredMessage(int index, int score) {}
 
     private AgentTurnDecision parseDecision(String modelOutput) {
         try {

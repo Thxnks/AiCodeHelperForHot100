@@ -12,7 +12,7 @@ The project is not positioned as a production SaaS platform. It is a practical b
 - Hot100 learning workflow with problem search, progress records, wrong book, weak-tag analysis, tag mastery, recommendations, and study plans.
 - AI wrong-answer analysis that converts user code and error descriptions into structured feedback, weak knowledge points, and next actions.
 - Streaming AI chat with role cards, solving modes, current-problem context, user learning profile, and optional MCP capability notice.
-- Hand-built Agent Runtime with model/tool loop, backend tool registry, permission gate, runtime task slots, execution trace, recovery policy, hooks, long-term memory, skills, and sub-agent support.
+- Hand-built Agent Runtime with model/tool loop, backend tool registry, permission gate, three-tier context compaction, runtime task slots, execution trace, recovery policy, hooks, long-term memory, skills, and sub-agent support.
 - Explainable local RAG for Hot100 knowledge retrieval, based on markdown/json resources with source, slug, section, score, and matched terms.
 - Backend engineering foundation with Spring Boot 3.5, Java 21, Spring Security, JPA, Flyway, MySQL, Redis fallback, RabbitMQ configuration, Docker Compose, and regression tests.
 
@@ -67,6 +67,7 @@ Current Agent capabilities include:
 - Runtime trace persistence through `AgentStep`
 - Invalid output, unknown tool, tool exception, and max-turn recovery
 - Hook events for model turns, tool calls, permission denial, compaction, and recovery
+- Three-tier context compaction: snip low-value history, microcompact large tool outputs, and autocompact remaining context with a model-generated summary
 - Long-term user memory for weaknesses, wrong-answer patterns, notes, and next actions
 - Skill loading and focused sub-agent execution
 - Runtime task slots with status, progress, heartbeat, and per-runtime step history
@@ -165,6 +166,16 @@ Supported Agent event types:
 - `tool_error`: a tool call failed.
 - `finish`: the Agent produced the final answer.
 - `error`: the Agent run failed.
+
+## Context Compaction
+
+The Agent Runtime uses a three-tier compaction strategy to keep long-running conversations within prompt limits while preserving useful execution state:
+
+1. `TIER1_SNIP`: scores older messages and removes low-value history while preserving the original user goal and recent turns.
+2. `TIER2_MICROCOMPACT`: compresses large tool outputs, especially JSON objects and arrays, into shorter summaries.
+3. `TIER3_AUTOCOMPACT`: asks the model to generate a structured compact summary with goal, completed work, findings, remaining work, and todo state.
+
+The compact summary records the tier and completed turn count, and `AgentPromptBuilder` renders that metadata back into later model turns.
 
 ## Main APIs
 
@@ -277,7 +288,7 @@ npm run build
 
 Built an AI learning assistant for Hot100 algorithm practice with Spring Boot and Vue. The backend implements JWT authentication, Hot100 learning progress, wrong-answer analysis, weak-tag analytics, recommendation and study-plan workflows, streaming AI chat, and a custom Agent Runtime.
 
-Designed the Agent Runtime with a backend-controlled tool registry, permission-gated tool execution, runtime slots, persistent step traces, recovery policies, long-term memory, skill loading, and explainable local RAG retrieval. This keeps LLM reasoning flexible while keeping execution observable, testable, and controlled by backend services.
+Designed the Agent Runtime with a backend-controlled tool registry, permission-gated tool execution, three-tier context compaction, runtime slots, persistent step traces, SSE runtime events, recovery policies, long-term memory, skill loading, MCP external tools, and explainable local RAG retrieval. This keeps LLM reasoning flexible while keeping execution observable, testable, and controlled by backend services.
 
 ## Project Structure
 
