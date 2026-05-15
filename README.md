@@ -1,20 +1,42 @@
-# AI Code Helper For Hot100
+# AI Code Helper — Hot100 Algorithm Practice Agent
 
 [中文文档](./README.zh-CN.md)
 
-AI Code Helper For Hot100 is a Spring Boot and Vue based AI learning assistant for algorithm practice and backend interview preparation. The project focuses on the Hot100 practice workflow: problem browsing, progress tracking, wrong-answer analysis, personalized recommendations, study plans, streaming AI coaching, and a backend-controlled Agent Runtime.
+A Spring Boot + Vue full-stack project that combines traditional backend engineering with a self-built ReAct Agent Runtime for algorithm coaching. The project is built for backend internship interviews — it demonstrates system design, framework integration, and the ability to build LLM orchestration logic beyond calling an API.
 
-The project is not positioned as a production SaaS platform. It is a practical backend project that demonstrates how to combine traditional business systems with LLM-driven Agent execution while keeping tool calls observable, permission-aware, and testable.
+## Why This Project
 
-## Highlights
+Most "AI projects" in resumes are thin wrappers around an API call. This one is different: **the Agent Runtime is the product**. It implements a full ReAct loop with tool permission gating, three-tier context compaction, structured error recovery, sub-agent isolation, and execution trace streaming — all written from scratch on top of LangChain4j as the model transport layer.
 
-- User system with JWT authentication, refresh tokens, logout, and current-user APIs.
-- Hot100 learning workflow with problem search, progress records, wrong book, weak-tag analysis, tag mastery, recommendations, and study plans.
-- AI wrong-answer analysis that converts user code and error descriptions into structured feedback, weak knowledge points, and next actions.
-- Streaming AI chat with role cards, solving modes, current-problem context, user learning profile, and optional MCP capability notice.
-- Hand-built Agent Runtime with model/tool loop, backend tool registry, permission gate, three-tier context compaction, runtime task slots, execution trace, recovery policy, hooks, long-term memory, skills, and sub-agent support.
-- Explainable local RAG for Hot100 knowledge retrieval, based on markdown/json resources with source, slug, section, score, and matched terms.
-- Backend engineering foundation with Spring Boot 3.5, Java 21, Spring Security, JPA, Flyway, MySQL, Redis fallback, RabbitMQ configuration, Docker Compose, and regression tests.
+## Technical Highlights
+
+### Agent Runtime (self-built ReAct engine)
+
+- **Custom ReAct loop**: `model turn → tool_use → tool_result → next turn → final_answer`, up to 8 autonomous turns. LangChain4j is used only as the LLM client — all orchestration logic is purpose-built.
+- **Three-tier context compaction** inspired by Claude Code: Tier 1 scores and removes low-value old messages (Snip), Tier 2 trims large JSON tool outputs to essential fields (Microcompact), Tier 3 calls the model to produce a structured semantic summary that replaces the entire conversation (Autocompact). Each tier gates the next — lightweight operations stay in-process, expensive ones run only when needed.
+- **Tool permission gate** with four levels: `READ`, `WRITE`, `EXTERNAL`, `SENSITIVE`. Denied calls return structured `tool_result` errors instead of throwing exceptions, so the model can adapt its strategy rather than crashing the loop.
+- **Structured error recovery** for four failure modes: invalid model output JSON, unknown tool names, tool execution exceptions, and max-turn limits. Each has a specific recovery message format that the model can self-correct against.
+- **Hook system with events** for model turns, tool calls, permission denial, compaction, and recovery. Observers receive these events to persist steps, update heartbeats, and push SSE streams — all without coupling business logic to the loop.
+
+### AI Integration
+
+- **MCP dual-channel routing**: the same MCP external tools (e.g. DashScope WebSearch) are routed into both the streaming chat path (via LangChain4j's native `McpToolProvider`) and the Agent tool registry (dynamically registered as `mcp_*` tools with `EXTERNAL` permission). `ObjectProvider<McpClient>` makes MCP optional — when not configured, external tools are silently skipped.
+- **Explainable RAG**: local retrieval loads Hot100 markdown and JSON resources, splits them into section-level chunks enriched with slug, difficulty, tags, and pattern metadata. Returns scored results with matched terms — deterministic and debuggable, not a black-box vector search.
+- **Agent step-level SSE streaming**: unlike chat token streaming (which LangChain4j handles natively), this streams Agent execution events (`model_turn`, `tool_result`, `tool_error`, `finish`) in real time. Uses Reactor `Sinks.Many` to bridge the blocking Agent loop to a reactive SSE flux.
+
+### Long-Term Memory System
+
+- Five memory types: `USER_PREFERENCE`, `WEAKNESS`, `WRONG_ANSWER`, `NEXT_ACTION`, `NOTE`.
+- Recall uses keyword tokenization + hit-count scoring + importance weighting — not a simple `LIKE` query. Results are sorted by relevance then importance then recency.
+- Memory is saved automatically during progress updates — wrong answers, weak knowledge points, and next actions are persisted as structured memories from the `rememberProgress` hook.
+
+### Backend Engineering
+
+- Spring Boot 3.5, Java 21, Spring Security with JWT (access + refresh tokens).
+- JPA + Flyway migrations for schema evolution, Redis caching with per-category TTLs and local fallback.
+- RabbitMQ configuration for async task processing.
+- Docker Compose for full-stack deployment, Maven Wrapper for reproducible builds.
+- `@Scheduled` watchdog that inspects runtime heartbeat timestamps every 30 seconds and marks stalled slots as FAILED after 5 minutes.
 
 ## Architecture
 
@@ -39,41 +61,17 @@ Frontend (Vue 3)
 
 The model can decide which registered tool to call, but actual execution stays inside the backend. Each tool has a name, description, permission level, and Java handler, so model reasoning remains flexible while system behavior remains controlled.
 
-## Agent Runtime
+## Agent Runtime Data Model
 
-The Agent module is built around a persistent task model:
+The Agent module separates a user goal from execution attempts and step-level traces:
 
 ```text
-AgentTask
-  taskId, userId, goal, status, finalAnswer
-      |
-      | 1:N
-      v
-RuntimeSlot
-  runtimeId, attempt, executorId, status, stage, progress, heartbeatAt
-      |
-      | 1:N
-      v
-AgentStep
-  runtimeId, stepOrder, toolName, input, output, status, latencyMs
+AgentTask         — what the user asked for (goal, status, finalAnswer)
+  └─ RuntimeSlot  — one execution attempt (attempt, executorId, heartbeatAt)
+       └─ AgentStep — each model turn or tool call (stepOrder, toolName, latencyMs)
 ```
 
-This design separates a user goal from one or more execution attempts. It makes retries, runtime trace inspection, and future executor failover easier to support.
-
-Current Agent capabilities include:
-
-- ReAct-style loop: `messages -> model -> tool_use -> tool_result -> final_answer`
-- Tool permissions: `READ`, `WRITE`, `EXTERNAL`, `SENSITIVE`
-- Runtime trace persistence through `AgentStep`
-- Invalid output, unknown tool, tool exception, and max-turn recovery
-- Hook events for model turns, tool calls, permission denial, compaction, and recovery
-- Three-tier context compaction: snip low-value history, microcompact large tool outputs, and autocompact remaining context with a model-generated summary
-- Long-term user memory for weaknesses, wrong-answer patterns, notes, and next actions
-- Skill loading and focused sub-agent execution
-- Runtime task slots with status, progress, heartbeat, and per-runtime step history
-- Runtime heartbeat and watchdog checks for stale running slots
-- SSE streaming for live Agent execution events: `model_turn`, `tool_result`, `tool_error`, `finish`, and `error`
-- Optional MCP external tools registered into the Agent tool registry with `EXTERNAL` permission
+A task can have multiple runtime slots (retries), each slot produces multiple steps. This design makes retries, trace inspection, and executor failover straightforward.
 
 ## Hot100 Domain Features
 
@@ -141,41 +139,26 @@ For Agent tasks, external MCP tools are permission-gated. A request must explici
 
 ## SSE Streaming
 
-The project exposes two streaming paths:
+Two streaming paths:
 
-- `GET /api/ai/chat`: streams normal AI chat tokens to the frontend through Server-Sent Events.
-- `POST /api/agent/hot100/run/stream`: streams Hot100 Agent runtime events while the Agent loop is running.
+| Endpoint | Purpose | Granularity |
+|---|---|---|
+| `GET /api/ai/chat` | AI chat | Token-level (word by word) |
+| `POST /api/agent/hot100/run/stream` | Agent execution | Step-level (model_turn, tool_result, tool_error, finish, error) |
 
-Agent stream events are emitted as named SSE events. The event payload is serialized from `AgentStreamEvent`:
-
-```json
-{
-  "type": "tool_result",
-  "turn": 2,
-  "toolName": "getWeakTags",
-  "data": "...",
-  "latencyMs": 123,
-  "status": "SUCCESS"
-}
-```
-
-Supported Agent event types:
-
-- `model_turn`: the model completed one reasoning turn.
-- `tool_result`: a tool call completed successfully.
-- `tool_error`: a tool call failed.
-- `finish`: the Agent produced the final answer.
-- `error`: the Agent run failed.
+Agent events carry `type`, `turn`, `toolName`, `data`, `latencyMs`, and `status`. The SSE stream is built with Reactor `Sinks.Many` to bridge the blocking Agent loop to a non-blocking SSE flux.
 
 ## Context Compaction
 
-The Agent Runtime uses a three-tier compaction strategy to keep long-running conversations within prompt limits while preserving useful execution state:
+Three-tier strategy — lightweight operations first, expensive model calls only when needed:
 
-1. `TIER1_SNIP`: scores older messages and removes low-value history while preserving the original user goal and recent turns.
-2. `TIER2_MICROCOMPACT`: compresses large tool outputs, especially JSON objects and arrays, into shorter summaries.
-3. `TIER3_AUTOCOMPACT`: asks the model to generate a structured compact summary with goal, completed work, findings, remaining work, and todo state.
+| Tier | What | Cost |
+|---|---|---|
+| TIER1_SNIP | Score and remove low-value old messages, keep original goal + recent turns | O(n), in-memory |
+| TIER2_MICROCOMPACT | Trim large JSON tool outputs to essential fields, truncate long text | O(n), in-memory |
+| TIER3_AUTOCOMPACT | Model-generated structured summary (`goal`, `done`, `findings`, `remaining`) replacing all messages | Network I/O + tokens |
 
-The compact summary records the tier and completed turn count, and `AgentPromptBuilder` renders that metadata back into later model turns.
+Tiers 1 and 2 directly mutate the message list without calling `state.compact()`. Only Tier 3 calls `state.compact()`, which clears all messages and replaces them with the original goal + the model's summary.
 
 ## Main APIs
 
@@ -286,9 +269,9 @@ npm run build
 
 ## Resume Summary
 
-Built an AI learning assistant for Hot100 algorithm practice with Spring Boot and Vue. The backend implements JWT authentication, Hot100 learning progress, wrong-answer analysis, weak-tag analytics, recommendation and study-plan workflows, streaming AI chat, and a custom Agent Runtime.
+Built a full-stack AI learning assistant (Spring Boot + Vue) with a self-built ReAct Agent Runtime for algorithm coaching. The backend implements JWT authentication, Hot100 learning workflows (progress tracking, wrong-answer analysis, weak-tag analytics, recommendations, study plans), streaming AI chat, and a custom Agent execution engine.
 
-Designed the Agent Runtime with a backend-controlled tool registry, permission-gated tool execution, three-tier context compaction, runtime slots, persistent step traces, SSE runtime events, recovery policies, long-term memory, skill loading, MCP external tools, and explainable local RAG retrieval. This keeps LLM reasoning flexible while keeping execution observable, testable, and controlled by backend services.
+The Agent Runtime is the core differentiator: a multi-turn ReAct loop with four-level tool permission gating, three-tier context compaction (inspired by Claude Code), structured error recovery, hook-based observability, long-term memory, sub-agent isolation, and SSE event streaming. LangChain4j is used as the model transport layer — all orchestration logic is purpose-built. Tool execution is fully observable through persistent step traces and a merged runtime timeline.
 
 ## Project Structure
 

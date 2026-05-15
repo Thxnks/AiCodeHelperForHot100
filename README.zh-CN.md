@@ -1,20 +1,41 @@
-# AI Code Helper For Hot100
+# AI Code Helper — Hot100 算法刷题 Agent
 
 [English](./README.md)
 
-AI Code Helper For Hot100 是一个基于 Spring Boot 和 Vue 的 AI 学习助手，面向 Hot100 算法刷题和后端面试准备场景。项目覆盖题库浏览、学习进度、错题分析、个性化推荐、学习计划、流式 AI 辅导，以及由后端控制执行的 Agent Runtime。
+Spring Boot + Vue 全栈项目，在传统后端业务系统之上自研了一套 ReAct Agent Runtime 作为核心编排引擎，面向算法学习辅导场景。项目为后端实习面试设计，重点展示系统架构能力、框架集成取舍以及自研 LLM 编排层的工程深度——区别于常见的 API 薄封装。
 
-这个项目不是简单的大模型 API 包装，也不包装成成熟商业 SaaS。它的定位是一个有完整业务闭环和工程深度的后端实习项目，用来展示传统后端业务系统如何和 LLM Agent 能力结合，同时保证工具调用可观测、可控、可测试。
+## 与常规 AI 项目的区别
 
-## 项目亮点
+多数简历中的 AI 项目停留在"调用大模型 API + 前端展示"的薄封装层面。本项目的核心差异在于：**Agent Runtime 是自主实现的**。ReAct 多轮循环、工具权限分级、三层上下文压缩、结构化异常恢复、子代理隔离、执行过程 SSE 流式追踪——这些编排层代码全部从零构建，LangChain4j 仅负责底层的模型通信。
 
-- 用户系统：支持 JWT 登录注册、刷新 token、登出、当前用户信息查询。
-- Hot100 学习闭环：题目检索、学习进度、错题本、薄弱标签、标签掌握度、推荐题单、学习计划。
-- AI 错题分析：结合用户代码和错误描述，生成结构化错因、薄弱知识点、AI 建议和下一步行动。
-- 流式 AI 对话：支持角色卡、解题模式、当前题目上下文、用户学习画像和 MCP 能力提示。
-- 手搓 Agent Runtime：支持 model/tool 循环、后端工具注册表、权限门控、三层上下文压缩、后台任务运行槽、执行 trace、异常恢复、hook、长期记忆、skills 和 sub-agent。
-- 可解释本地 RAG：基于 Hot100 markdown/json 资源构建知识检索，返回来源、题目、章节、分数和命中词。
-- 后端工程基础：Spring Boot 3.5、Java 21、Spring Security、JPA、Flyway、MySQL、Redis fallback、RabbitMQ 配置、Docker Compose 和回归测试。
+## 技术亮点
+
+### Agent Runtime（自研 ReAct 引擎）
+
+- **自研 ReAct 循环**：`模型推理 → 工具调用 → 观察结果 → 下一轮决策 → 最终答案`，单次任务最多 8 轮自主执行。LangChain4j 在此仅作为 ChatModel 的适配层，所有循环控制、状态管理和决策解析均由自研代码实现。
+- **三层渐进式上下文压缩**（参考 Claude Code 策略）：Tier 1 Snip — 按评分规则移除低价值历史消息，保留原始目标与最近对话；Tier 2 Microcompact — 对大体积 JSON 工具返回做字段级裁剪，仅保留关键信息；Tier 3 Autocompact — 调用模型生成结构化语义摘要（`goal`、`done`、`findings`、`remaining`），替换全部消息列表。前两级为纯内存操作，仅在仍不满足限制时进入网络调用级压缩。
+- **四级工具权限门**：`READ`、`WRITE`、`EXTERNAL`、`SENSITIVE`。权限拒绝时返回结构化 `tool_result` 错误信息，而非抛出异常——模型感知到工具被拒绝后可自行调整策略，而非因异常中断循环。
+- **结构化异常恢复**：覆盖四种故障场景——模型输出 JSON 解析失败、调用未注册工具、工具执行异常、超过最大轮数。每种场景对应特定 recovery message 格式，模型可据此修正后续行为。
+- **事件钩子体系**：模型轮次、工具调用、权限拒绝、上下文压缩、异常恢复等关键节点均触发 Hook 事件。Observer 监听这些事件完成 Step 持久化、心跳上报和 SSE 推送——业务逻辑与循环内核完全解耦。
+
+### AI 集成
+
+- **MCP 双通道分流**：同一套 MCP 外部工具（如 DashScope WebSearch），同时服务于普通聊天（经 LangChain4j 原生 `McpToolProvider`）和 Agent 工具注册表（动态注册为 `mcp_*` 工具，归属 `EXTERNAL` 权限）。通过 `ObjectProvider<McpClient>` 实现条件注入，未启用 MCP 时外部工具静默跳过，不影响核心流程。
+- **可解释本地 RAG**：加载 Hot100 markdown 与 JSON 资源，按章节切分并补充题目元数据（slug、难度、标签、解题模式），返回结果包含来源文件、匹配分数和命中词。整个过程完全可追溯，非黑盒向量检索，便于调试和测试。
+- **Agent 步骤级 SSE 流式推送**：区别于聊天场景的 token 级逐字流式（LangChain4j 原生支持），本模块推送的是 Agent 执行事件（`model_turn`、`tool_result`、`tool_error`、`finish`）。基于 Reactor `Sinks.Many` 桥接阻塞式 Agent 循环与响应式 SSE 流，前端可实时展示执行过程而非等待最终结果。
+
+### 长期记忆系统
+
+- 五种记忆类型：`USER_PREFERENCE`（用户偏好）、`WEAKNESS`（薄弱知识点）、`WRONG_ANSWER`（错题模式）、`NEXT_ACTION`（下一步行动）、`NOTE`（普通笔记）。
+- 召回排序：对查询文本分词后遍历每条记忆的 type、scope、subject、content、source 字段，命中次数加权 + importance 权重双排序，非简单 `LIKE` 查询。
+- 进度更新时自动触发记忆写入：错因、薄弱知识点、下一步行动等信息通过 `rememberProgress` 方法自动持久化到记忆库。
+
+### 后端工程基础
+
+- Spring Boot 3.5 / Java 21 / Spring Security / JWT（access + refresh token）
+- Spring Data JPA + Flyway 数据库迁移 / Redis 缓存（按类型独立 TTL，支持本地 fallback）
+- RabbitMQ 异步消息 / Docker Compose 一键部署 / Maven Wrapper 可复现构建
+- `@Scheduled` 心跳看门狗：每 30 秒扫描运行中槽位的心跳时间，超过 5 分钟无心跳自动标记 FAILED
 
 ## 整体架构
 
@@ -39,41 +60,17 @@ Frontend (Vue 3)
 
 模型可以决定调用哪个已注册工具，但真正的执行权在后端。每个工具都有名称、描述、权限等级和 Java handler，因此模型负责推理，系统负责受控执行。
 
-## Agent Runtime
+## Agent Runtime 数据模型
 
-Agent 模块围绕持久化任务模型设计：
+Agent 模块将”用户目标”和”执行尝试”拆开，每一步都有迹可循：
 
 ```text
-AgentTask
-  taskId, userId, goal, status, finalAnswer
-      |
-      | 1:N
-      v
-RuntimeSlot
-  runtimeId, attempt, executorId, status, stage, progress, heartbeatAt
-      |
-      | 1:N
-      v
-AgentStep
-  runtimeId, stepOrder, toolName, input, output, status, latencyMs
+AgentTask         — 用户目标（goal, status, finalAnswer）
+  └─ RuntimeSlot  — 一次执行尝试（attempt, executorId, heartbeatAt）
+       └─ AgentStep — 单步模型调用或工具执行（stepOrder, toolName, latencyMs）
 ```
 
-这个设计把“用户目标”和“具体执行尝试”拆开，同一个任务后续可以支持重试、多执行器接管和按 runtime 查看独立 trace。
-
-当前 Agent 能力包括：
-
-- ReAct 风格循环：`messages -> model -> tool_use -> tool_result -> final_answer`
-- 工具权限等级：`READ`、`WRITE`、`EXTERNAL`、`SENSITIVE`
-- 通过 `AgentStep` 持久化模型输出、工具输入输出、状态和耗时
-- 对非法模型输出、未知工具、工具异常、最大轮次停止做恢复处理
-- hook 事件：模型轮次、工具调用、权限拒绝、上下文压缩、异常恢复
-- 三层上下文压缩：先裁剪低价值历史，再压缩大体积工具输出，最后用模型生成结构化摘要
-- 长期用户记忆：记录薄弱点、错因模式、笔记和下一步行动
-- skill 加载和 focused sub-agent 执行
-- 后台运行槽：记录状态、阶段、进度、心跳和每次运行的 step 历史
-- runtime heartbeat 和 watchdog 检查，用于发现长时间无心跳的运行槽
-- Agent 执行过程 SSE 流式输出：`model_turn`、`tool_result`、`tool_error`、`finish`、`error`
-- 可选 MCP 外部工具会注册进 Agent 工具表，并使用 `EXTERNAL` 权限控制
+一个任务可对应多次执行尝试（重试场景），每次尝试产生多个步骤。该设计为任务重试、执行过程排查和后续执行器故障切换提供了清晰的数据边界。
 
 ## Hot100 业务能力
 
@@ -103,10 +100,10 @@ AgentStep
 
 ## MCP 集成
 
-项目已经预留并接入了可选 MCP 能力，用于外部 WebSearch 等工具调用。当前 MCP 同时接入普通流式聊天和 Hot100 Agent 工具注册表。
+项目已接入可选 MCP 能力，用于外部 WebSearch 等工具调用。MCP 同时服务于普通流式聊天和 Hot100 Agent 工具注册表两条链路。
 
 - `McpConfig`：在 MCP 开启时创建 MCP client 和 `McpToolProvider`。
-- `AiCodeHelperServiceFactory`：把 MCP tool provider 挂到 LangChain4j AI Service 上。
+- `AiCodeHelperServiceFactory`：将 MCP tool provider 注册到 LangChain4j AI Service。
 - `QwenMcpCapabilityService`：根据配置生成 MCP 能力提示。
 - `AiController`：把 MCP 能力提示注入 SSE 流式聊天请求。
 - `Hot100AgentToolRegistry`：当 MCP client 可用时，将 MCP 工具动态注册为 `mcp_*` Agent 工具，并标记为 `EXTERNAL` 权限。
@@ -137,45 +134,30 @@ $env:APP_MCP_WEB_SEARCH_QUERY_ARGUMENT="query"
 .\mvnw.cmd spring-boot:run
 ```
 
-Agent 任务中的 MCP 外部工具受权限门控控制。请求需要显式允许 external 工具，否则 `EXTERNAL` 权限工具会被后端权限门拒绝执行。
+Agent 任务中的 MCP 外部工具受权限门控约束：请求需显式开启 `allowExternal`，否则归属 `EXTERNAL` 权限的工具将被拒绝执行。
 
 ## SSE 流式输出
 
-项目目前有两条 SSE 流式链路：
+两条流式链路：
 
-- `GET /api/ai/chat`：普通 AI 聊天流式输出，前端通过 EventSource 接收。
-- `POST /api/agent/hot100/run/stream`：Hot100 Agent 运行时事件流，Agent loop 执行过程中实时推送。
+| 端点 | 用途 | 粒度 |
+|---|---|---|
+| `GET /api/ai/chat` | AI 聊天 | token 级（逐字输出） |
+| `POST /api/agent/hot100/run/stream` | Agent 执行 | 步骤级（model_turn, tool_result, tool_error, finish, error） |
 
-Agent 流式事件使用命名 SSE event，payload 来自 `AgentStreamEvent`：
-
-```json
-{
-  "type": "tool_result",
-  "turn": 2,
-  "toolName": "getWeakTags",
-  "data": "...",
-  "latencyMs": 123,
-  "status": "SUCCESS"
-}
-```
-
-当前 Agent 事件类型：
-
-- `model_turn`：模型完成一轮推理。
-- `tool_result`：工具调用成功。
-- `tool_error`：工具调用失败。
-- `finish`：Agent 生成最终答案。
-- `error`：Agent 运行失败。
+Agent 事件携带 `type`、`turn`、`toolName`、`data`、`latencyMs`、`status` 字段。SSE 流通过 Reactor `Sinks.Many` 桥接阻塞式 Agent 循环与非阻塞响应式 SSE flux，前端可实时展示执行进度。
 
 ## 上下文压缩
 
-Agent Runtime 使用三层上下文压缩策略，在长轮次任务中控制 prompt 长度，同时尽量保留关键执行状态：
+三层策略——按代价递进，优先使用廉价操作：
 
-1. `TIER1_SNIP`：对历史消息打分，裁剪低价值旧消息，同时保留原始用户目标和最近轮次。
-2. `TIER2_MICROCOMPACT`：压缩大体积工具输出，尤其是 JSON object 和 array。
-3. `TIER3_AUTOCOMPACT`：调用模型生成结构化摘要，保留目标、已完成工作、关键发现、剩余任务和 todo 状态。
+| 层级 | 操作 | 开销 |
+|---|---|---|
+| TIER1_SNIP | 打分删除低价值旧消息，保留原始目标 + 最近几轮 | O(n)，纯内存 |
+| TIER2_MICROCOMPACT | 压缩大 JSON 工具输出为关键字段，截断长文本 | O(n)，纯内存 |
+| TIER3_AUTOCOMPACT | 调用模型生成结构化摘要（`goal`、`done`、`findings`、`remaining`），替换全部消息 | 网络 I/O + token 消耗 |
 
-压缩摘要会记录压缩层级和已完成轮次，`AgentPromptBuilder` 会把这些元数据重新注入后续模型轮次。
+前两层直接操作 messages 列表，不调 `state.compact()`。只有 Tier 3 才调 `state.compact()`，清空全部消息，只保留原始目标 + 模型摘要。
 
 ## 核心接口
 
@@ -286,9 +268,9 @@ npm run build
 
 ## 简历描述
 
-基于 Spring Boot 和 Vue 实现面向 Hot100 算法学习的 AI 学习助手。后端支持 JWT 用户认证、学习进度管理、错题分析、薄弱标签统计、推荐题单、学习计划、流式 AI 对话，以及自研 Agent Runtime。
+基于 Spring Boot + Vue 实现全栈 AI 学习助手，自研 ReAct Agent Runtime 作为核心编排引擎。后端包含 JWT 认证、Hot100 学习闭环（进度追踪、错题分析、薄弱标签、推荐题单、学习计划）、流式 AI 对话，以及自研 Agent 执行引擎。
 
-设计并实现 Agent Runtime：包括后端受控工具注册表、权限门控工具执行、三层上下文压缩、后台运行槽、持久化 step trace、SSE 运行事件、异常恢复策略、长期记忆、skill 加载、MCP 外部工具和可解释本地 RAG。系统让大模型负责推理决策，同时由后端控制真实执行过程，提升可观测性、可测试性和执行安全性。
+Agent Runtime 是核心差异点：多轮 ReAct 循环、四级工具权限门控、三层渐进式上下文压缩（参考 Claude Code 策略）、结构化异常恢复、事件钩子可观测、长期记忆、子代理隔离和 SSE 步骤级事件流式推送。LangChain4j 仅作为模型传输层——所有编排逻辑全部自研。工具执行通过持久化 step trace 和合并后的 runtime timeline 实现全链路可观测。
 
 ## 项目结构
 
