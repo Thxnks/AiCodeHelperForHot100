@@ -34,7 +34,6 @@ Most "AI projects" in resumes are thin wrappers around an API call. This one is 
 
 - Spring Boot 3.5, Java 21, Spring Security with JWT (access + refresh tokens).
 - JPA + Flyway migrations for schema evolution, Redis caching with per-category TTLs and local fallback.
-- RabbitMQ configuration for async task processing.
 - Docker Compose for full-stack deployment, Maven Wrapper for reproducible builds.
 - `@Scheduled` watchdog that inspects runtime heartbeat timestamps every 30 seconds and marks stalled slots as FAILED after 5 minutes.
 
@@ -56,7 +55,7 @@ Frontend (Vue 3)
             -> tool_result
             -> next model turn or final_answer
        -> JPA Repositories
-  -> MySQL / Redis / RabbitMQ
+  -> MySQL / Redis
 ```
 
 The model can decide which registered tool to call, but actual execution stays inside the backend. Each tool has a name, description, permission level, and Java handler, so model reasoning remains flexible while system behavior remains controlled.
@@ -72,6 +71,16 @@ AgentTask         — what the user asked for (goal, status, finalAnswer)
 ```
 
 A task can have multiple runtime slots (retries), each slot produces multiple steps. This design makes retries, trace inspection, and executor failover straightforward.
+
+## Background Agent Tools
+
+The Hot100 Agent can launch focused background work without blocking the current ReAct loop:
+
+- `background_run`: starts a background analysis task and immediately returns a `task_id` backed by a runtime slot.
+- `background_check`: checks the runtime slot status, stage, progress, error, and output for a previously launched background task.
+- Background tasks run through `RuntimeTaskService` on the configured Spring executor and reuse sub-agent execution for focused analysis.
+- Completed, failed, or timed-out background tasks push `BackgroundNotification` records. The main Agent loop drains these notifications before each model turn and injects them back into the conversation as new context.
+- The watchdog uses runtime heartbeats to mark stalled background slots as `FAILED` after 5 minutes.
 
 ## Hot100 Domain Features
 
@@ -223,7 +232,7 @@ Configure at least:
 - `DASHSCOPE_API_KEY`
 - `APP_AUTH_JWT_SECRET`
 - MySQL connection settings
-- Redis and RabbitMQ settings if you use the full compose stack
+- Redis settings if you use the full compose stack
 - Optional MCP settings if WebSearch MCP is enabled: `APP_MCP_ENABLED`, `APP_MCP_SSE_URL`, `APP_MCP_WEB_SEARCH_TOOL_NAME`, `APP_MCP_WEB_SEARCH_QUERY_ARGUMENT`
 
 Start infrastructure and application with Docker:
